@@ -5,6 +5,7 @@ import {
   existsByDocumentController,
   existsByEmailController,
   getUserByIdController,
+  listDelegatedProfessionalsController,
   listUsersController,
   updateUserPasswordController,
   updateUserController,
@@ -20,6 +21,7 @@ router.get("/exists/document/:numDocumento", asyncHandler(existsByDocumentContro
 router.use(requireAuth);
 
 router.get("", asyncHandler(listUsersController));
+router.get("/profesionales-delegados", asyncHandler(listDelegatedProfessionalsController));
 router.patch("/:id/password", asyncHandler(updateUserPasswordController));
 router.get("/:id", asyncHandler(getUserByIdController));
 router.post("", asyncHandler(createUserController));

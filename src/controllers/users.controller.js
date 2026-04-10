@@ -3,6 +3,7 @@ import {
   checkEmailExists,
   createUserRecord,
   deleteUserRecord,
+  getDelegatedProfessionals,
   getUserById,
   getUsers,
   updateUserPasswordRecord,
@@ -23,6 +24,10 @@ export async function listUsersController(_req, res) {
 
 export async function getUserByIdController(req, res) {
   res.json(await getUserById(req.params.id, req.user));
+}
+
+export async function listDelegatedProfessionalsController(req, res) {
+  res.json(await getDelegatedProfessionals(req.user));
 }
 
 export async function createUserController(req, res) {

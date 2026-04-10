@@ -12,7 +12,7 @@ export async function findUserIdByDocument(numDocumento) {
 
 export async function findUserForLogin(email) {
   const [rows] = await pool.query(
-    `SELECT id, email, password_hash, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, must_change_password
+    `SELECT id, email, password_hash, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password
      FROM users
      WHERE email = ?
      LIMIT 1`,
@@ -23,7 +23,7 @@ export async function findUserForLogin(email) {
 
 export async function findUserById(id) {
   const [rows] = await pool.query(
-    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, must_change_password, created_at, updated_at
+    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password, created_at, updated_at
      FROM users
      WHERE id = ?
      LIMIT 1`,
@@ -34,7 +34,7 @@ export async function findUserById(id) {
 
 export async function listUsers() {
   const [rows] = await pool.query(
-    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, must_change_password, created_at, updated_at
+    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password, created_at, updated_at
      FROM users
      ORDER BY nombre ASC`
   );
@@ -47,7 +47,7 @@ export async function listUsersByIpsId(ipsId) {
   }
 
   const [rows] = await pool.query(
-    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, must_change_password, created_at, updated_at
+    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password, created_at, updated_at
      FROM users
      WHERE ips_id = ?
      ORDER BY nombre ASC`,
@@ -63,7 +63,7 @@ export async function findUserByIdAndIps(id, ipsId) {
   }
 
   const [rows] = await pool.query(
-    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, must_change_password, created_at, updated_at
+    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password, created_at, updated_at
      FROM users
      WHERE id = ? AND ips_id = ?
      LIMIT 1`,
@@ -74,7 +74,7 @@ export async function findUserByIdAndIps(id, ipsId) {
 }
 
 export async function createUser(user) {
-  const columns = ["id", "email", "password_hash", "nombre", "cargo", "ips_id", "convenio", "grupo", "num_documento", "activo", "must_change_password"];
+  const columns = ["id", "email", "password_hash", "nombre", "cargo", "ips_id", "convenio", "grupo", "num_documento", "activo", "bandejas", "accesos_profesionales", "must_change_password"];
   const values = [
     user.id,
     user.email,
@@ -86,6 +86,8 @@ export async function createUser(user) {
     user.grupo,
     user.numDocumento,
     user.activo,
+    user.bandejas,
+    user.accesosProfesionales,
     user.mustChangePassword,
   ];
 
