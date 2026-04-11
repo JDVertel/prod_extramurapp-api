@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
-    "migrate:relational": "node src/scripts/migrate-relational-storage.js"
+    "migrate:relational": "node src/scripts/migrate-relational-storage.js",
+    "migrate:encuestas:nutricionista": "node src/scripts/migrate-encuestas-nutricionista-columns.js",
+    "migrate:users:login-lock": "node src/scripts/migrate-users-login-lock-columns.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

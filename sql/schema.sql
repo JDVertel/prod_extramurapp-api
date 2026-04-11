@@ -17,6 +17,10 @@ CREATE TABLE IF NOT EXISTS users (
   bandejas JSON NULL,
   accesos_profesionales JSON NULL,
   must_change_password TINYINT(1) NOT NULL DEFAULT 0,
+  failed_login_attempts INT NOT NULL DEFAULT 0,
+  lock_level TINYINT NOT NULL DEFAULT 0,
+  locked_until DATETIME NULL,
+  is_locked TINYINT(1) NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_users_ips_id (ips_id)
@@ -146,6 +150,7 @@ CREATE TABLE IF NOT EXISTS encuestas (
   id_enfermero_atiende VARCHAR(36) NULL,
   id_psicologo_atiende VARCHAR(36) NULL,
   id_tsocial_atiende VARCHAR(36) NULL,
+  id_nutricionista_atiende VARCHAR(36) NULL,
 
   -- Datos del convenio
   convenio VARCHAR(120) NULL,
@@ -180,6 +185,7 @@ CREATE TABLE IF NOT EXISTS encuestas (
   status_gest_enfermera TINYINT(1) NOT NULL DEFAULT 0,
   status_gest_psicologo TINYINT(1) NOT NULL DEFAULT 0,
   status_gest_tsocial TINYINT(1) NOT NULL DEFAULT 0,
+  status_gest_nutricionista TINYINT(1) NOT NULL DEFAULT 0,
   status_visita TINYINT(1) NOT NULL DEFAULT 0,
   status_caracterizacion TINYINT(1) NOT NULL DEFAULT 0,
   status_facturacion TINYINT(1) NOT NULL DEFAULT 0,
@@ -189,6 +195,7 @@ CREATE TABLE IF NOT EXISTS encuestas (
   fecha_gest_medica DATETIME NULL,
   fecha_gest_psicologo DATETIME NULL,
   fecha_gest_tsocial DATETIME NULL,
+  fecha_gest_nutricionista DATETIME NULL,
   fecha_gest_auxiliar DATETIME NULL,
   fecha_facturacion DATETIME NULL,
 
@@ -208,6 +215,7 @@ CREATE TABLE IF NOT EXISTS encuestas (
   INDEX idx_encuestas_status_visita (status_visita),
   INDEX idx_encuestas_status_facturacion (status_facturacion),
   INDEX idx_encuestas_id_encuestador (id_encuestador),
+  INDEX idx_encuestas_id_nutricionista_atiende (id_nutricionista_atiende),
   INDEX idx_encuestas_created_at (created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

@@ -8,6 +8,7 @@ import {
   getUsers,
   updateUserPasswordRecord,
   updateUserRecord,
+  unlockUserRecord,
 } from "../services/user.service.js";
 
 export async function existsByEmailController(req, res) {
@@ -44,4 +45,8 @@ export async function deleteUserController(req, res) {
 
 export async function updateUserPasswordController(req, res) {
   res.json(await updateUserPasswordRecord(req.params.id, req.body || {}, req.user));
+}
+
+export async function unlockUserController(req, res) {
+  res.json(await unlockUserRecord(req.params.id, req.user));
 }

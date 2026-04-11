@@ -53,6 +53,10 @@ export function toUserResponse(row) {
     accesosProfesionales,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    failedLoginAttempts: row.failed_login_attempts === undefined ? 0 : Number(row.failed_login_attempts || 0),
+    lockLevel: row.lock_level === undefined ? 0 : Number(row.lock_level || 0),
+    lockedUntil: row.locked_until ?? null,
+    isLocked: row.is_locked === undefined ? false : Boolean(row.is_locked),
     mustChangePassword:
       row.must_change_password === undefined ? undefined : Boolean(row.must_change_password),
   };

@@ -3,6 +3,7 @@ import { ensure, AppError } from "../utils/app-error.js";
 import { hashPassword } from "../utils/auth.js";
 import { normalizeDocument, normalizeEmail, toUserResponse } from "../models/user.model.js";
 import {
+  clearUserLockState,
   createUser,
   deleteUser,
   findUserById,
@@ -59,7 +60,30 @@ function normalizeAccesosProfesionales(value) {
   return JSON.stringify(limpios);
 }
 
-const CARGOS_PROFESIONALES = new Set(["Medico", "Enfermero", "Psicologo", "Tsocial", "Nutricionista"]);
+const CARGOS_PROFESIONALES_NORMALIZADOS = new Set([
+  "auxiliardeenfermeria",
+  "auxiliar",
+  "medico",
+  "enfermero",
+  "psicologo",
+  "tsocial",
+  "trabajadorsocial",
+  "trabajadorasocial",
+  "nutricionista",
+]);
+
+function normalizeCargo(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function isProfessionalCargo(value) {
+  return CARGOS_PROFESIONALES_NORMALIZADOS.has(normalizeCargo(value));
+}
 
 export async function checkEmailExists(email) {
   const normalized = normalizeEmail(email);
@@ -88,8 +112,7 @@ export async function getDelegatedProfessionals(actor = null) {
   const profesionales = rows
     .map(toUserResponse)
     .filter((user) => {
-      const cargo = String(user?.cargo || "").trim();
-      return CARGOS_PROFESIONALES.has(cargo) && user?.activo !== false;
+      return isProfessionalCargo(user?.cargo) && user?.activo !== false;
     });
 
   const cargoActor = String(actor?.cargo || "").trim().toLowerCase();
@@ -109,7 +132,6 @@ export async function getDelegatedProfessionals(actor = null) {
   }
 
   const actorData = toUserResponse(actorRow);
-  const convenioActor = String(actorData?.convenio || "").trim().toLowerCase();
   const accesos = Array.isArray(actorData?.accesosProfesionales)
     ? actorData.accesosProfesionales
     : [];
@@ -118,9 +140,7 @@ export async function getDelegatedProfessionals(actor = null) {
   return profesionales
     .filter((user) => {
       const documento = String(user?.numDocumento || "").trim();
-      const convenio = String(user?.convenio || "").trim().toLowerCase();
-      const cumpleConvenio = !convenioActor || convenio === convenioActor;
-      return documento && accesosSet.has(documento) && cumpleConvenio;
+      return documento && accesosSet.has(documento);
     })
     .sort((a, b) => String(a?.nombre || "").localeCompare(String(b?.nombre || "")));
 }
@@ -282,4 +302,29 @@ export async function updateUserPasswordRecord(id, payload, actor = null) {
   }
 
   return { message: "Contrasena actualizada correctamente" };
+}
+
+export async function unlockUserRecord(id, actor = null) {
+  const cargoActor = String(actor?.cargo || "").trim().toLowerCase();
+  ensure(
+    cargoActor === "admin" || cargoActor === "superusuario",
+    "Solo administradores pueden desbloquear usuarios",
+    403
+  );
+
+  const actorIpsId = resolveActorIpsId(actor);
+  const targetUser = shouldRestrictByActorIps(actor) && actorIpsId
+    ? await findUserByIdAndIps(id, actorIpsId)
+    : await findUserById(id);
+
+  if (!targetUser) {
+    throw new AppError("Usuario no encontrado", 404);
+  }
+
+  const affected = await clearUserLockState(id);
+  if (!affected) {
+    throw new AppError("Usuario no encontrado", 404);
+  }
+
+  return { message: "Usuario desbloqueado correctamente" };
 }

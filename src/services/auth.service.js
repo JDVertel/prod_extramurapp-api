@@ -5,6 +5,7 @@ import { hashPassword, signToken, verifyPassword } from "../utils/auth.js";
 import { normalizeEmail, toAuthLoginResponse } from "../models/user.model.js";
 import {
   createPasswordResetToken,
+  ensureLoginSecurityColumns,
   createUser,
   findUserForLogin,
   findUserIdByEmail,
@@ -12,6 +13,20 @@ import {
   markPasswordResetTokenAsUsed,
   updateUser,
 } from "../repositories/user.repository.js";
+
+const MAX_LOGIN_ATTEMPTS = 3;
+
+function getLockDurationMinutes(nextLevel) {
+  if (nextLevel === 1) return 30;
+  if (nextLevel === 2) return 60;
+  return null;
+}
+
+function toDate(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 function normalizeIpsId(value) {
   const normalized = String(value ?? "").trim();
@@ -57,12 +72,113 @@ export async function login(payload) {
   const email = normalizeEmail(payload.email);
   ensure(email && payload.password, "email y password son obligatorios", 400);
 
+  await ensureLoginSecurityColumns();
+
   const user = await findUserForLogin(email);
   ensure(user, "Credenciales invalidas", 401);
   ensure(user.activo, "Usuario inactivo", 403);
 
+  const now = new Date();
+  const lockLevel = Number(user.lock_level || 0);
+  const lockedUntil = toDate(user.locked_until);
+  const isLocked = Boolean(user.is_locked);
+
+  if (isLocked && lockLevel >= 3 && !lockedUntil) {
+    throw new AppError("Usuario bloqueado de forma permanente. Contacta al administrador.", 423, {
+      blocked: true,
+      permanent: true,
+      attemptsRemaining: 0,
+    });
+  }
+
+  if (isLocked && lockedUntil && lockedUntil > now) {
+    const msRemaining = lockedUntil.getTime() - now.getTime();
+    const minutesRemaining = Math.max(1, Math.ceil(msRemaining / 60000));
+    throw new AppError(`Usuario bloqueado temporalmente. Intenta de nuevo en ${minutesRemaining} minuto(s).`, 423, {
+      blocked: true,
+      permanent: false,
+      minutesRemaining,
+      attemptsRemaining: 0,
+    });
+  }
+
+  if (isLocked && (!lockedUntil || lockedUntil <= now)) {
+    await updateUser(user.id, {
+      is_locked: 0,
+      locked_until: null,
+      failed_login_attempts: 0,
+    });
+    user.is_locked = 0;
+    user.locked_until = null;
+    user.failed_login_attempts = 0;
+  }
+
   const ok = await verifyPassword(payload.password, user.password_hash);
-  ensure(ok, "Credenciales invalidas", 401);
+  if (!ok) {
+    const currentAttempts = Number(user.failed_login_attempts || 0);
+    const nextAttempts = currentAttempts + 1;
+
+    if (nextAttempts < MAX_LOGIN_ATTEMPTS) {
+      await updateUser(user.id, { failed_login_attempts: nextAttempts });
+      const attemptsRemaining = MAX_LOGIN_ATTEMPTS - nextAttempts;
+      throw new AppError(
+        `Credenciales invalidas. Te quedan ${attemptsRemaining} intento(s) antes del bloqueo.`,
+        401,
+        {
+          attemptsRemaining,
+          maxAttempts: MAX_LOGIN_ATTEMPTS,
+          blocked: false,
+        }
+      );
+    }
+
+    const nextLockLevel = lockLevel + 1;
+    const durationMinutes = getLockDurationMinutes(nextLockLevel);
+
+    if (!durationMinutes) {
+      await updateUser(user.id, {
+        is_locked: 1,
+        lock_level: 3,
+        locked_until: null,
+        failed_login_attempts: 0,
+      });
+
+      throw new AppError("Usuario bloqueado de forma permanente. Contacta al administrador.", 423, {
+        blocked: true,
+        permanent: true,
+        attemptsRemaining: 0,
+        maxAttempts: MAX_LOGIN_ATTEMPTS,
+      });
+    }
+
+    const lockedUntilDate = new Date(now.getTime() + durationMinutes * 60000);
+    const lockedUntil = lockedUntilDate.toISOString().slice(0, 19).replace("T", " ");
+
+    await updateUser(user.id, {
+      is_locked: 1,
+      lock_level: nextLockLevel,
+      locked_until: lockedUntil,
+      failed_login_attempts: 0,
+    });
+
+    throw new AppError(
+      `Usuario bloqueado temporalmente por ${durationMinutes} minuto(s). Contacta al administrador si necesitas acceso inmediato.`,
+      423,
+      {
+        blocked: true,
+        permanent: false,
+        minutesRemaining: durationMinutes,
+        attemptsRemaining: 0,
+        maxAttempts: MAX_LOGIN_ATTEMPTS,
+      }
+    );
+  }
+
+  await updateUser(user.id, {
+    failed_login_attempts: 0,
+    is_locked: 0,
+    locked_until: null,
+  });
 
   const token = signToken({
     sub: user.id,

@@ -7,6 +7,7 @@ import {
   getUserByIdController,
   listDelegatedProfessionalsController,
   listUsersController,
+  unlockUserController,
   updateUserPasswordController,
   updateUserController,
 } from "../controllers/users.controller.js";
@@ -23,6 +24,7 @@ router.use(requireAuth);
 router.get("", asyncHandler(listUsersController));
 router.get("/profesionales-delegados", asyncHandler(listDelegatedProfessionalsController));
 router.patch("/:id/password", asyncHandler(updateUserPasswordController));
+router.patch("/:id/unlock", asyncHandler(unlockUserController));
 router.get("/:id", asyncHandler(getUserByIdController));
 router.post("", asyncHandler(createUserController));
 router.put("/:id", asyncHandler(updateUserController));

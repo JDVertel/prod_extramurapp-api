@@ -12,7 +12,8 @@ export async function findUserIdByDocument(numDocumento) {
 
 export async function findUserForLogin(email) {
   const [rows] = await pool.query(
-    `SELECT id, email, password_hash, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password
+    `SELECT id, email, password_hash, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password,
+            failed_login_attempts, lock_level, locked_until, is_locked
      FROM users
      WHERE email = ?
      LIMIT 1`,
@@ -23,7 +24,8 @@ export async function findUserForLogin(email) {
 
 export async function findUserById(id) {
   const [rows] = await pool.query(
-    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password, created_at, updated_at
+    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password,
+            failed_login_attempts, lock_level, locked_until, is_locked, created_at, updated_at
      FROM users
      WHERE id = ?
      LIMIT 1`,
@@ -34,7 +36,8 @@ export async function findUserById(id) {
 
 export async function listUsers() {
   const [rows] = await pool.query(
-    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password, created_at, updated_at
+    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password,
+            failed_login_attempts, lock_level, locked_until, is_locked, created_at, updated_at
      FROM users
      ORDER BY nombre ASC`
   );
@@ -47,7 +50,8 @@ export async function listUsersByIpsId(ipsId) {
   }
 
   const [rows] = await pool.query(
-    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password, created_at, updated_at
+    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password,
+            failed_login_attempts, lock_level, locked_until, is_locked, created_at, updated_at
      FROM users
      WHERE ips_id = ?
      ORDER BY nombre ASC`,
@@ -63,7 +67,8 @@ export async function findUserByIdAndIps(id, ipsId) {
   }
 
   const [rows] = await pool.query(
-    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password, created_at, updated_at
+    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password,
+            failed_login_attempts, lock_level, locked_until, is_locked, created_at, updated_at
      FROM users
      WHERE id = ? AND ips_id = ?
      LIMIT 1`,
@@ -119,6 +124,62 @@ export async function updateUser(id, updates) {
     values
   );
   return result.affectedRows;
+}
+
+export async function clearUserLockState(id) {
+  const [cols] = await pool.query("SHOW COLUMNS FROM users");
+  const available = new Set((cols || []).map((c) => String(c.Field || "").trim()));
+
+  const resetCandidates = {
+    activo: 1,
+    login_failed_attempts: 0,
+    failed_login_attempts: 0,
+    failed_attempts: 0,
+    login_lock_level: 0,
+    lock_level: 0,
+    login_locked_until: null,
+    locked_until: null,
+    lock_until: null,
+    login_locked_at: null,
+    login_lock_reason: null,
+    login_permanent_lock: 0,
+    is_locked: 0,
+  };
+
+  const updates = Object.entries(resetCandidates).reduce((acc, [k, v]) => {
+    if (available.has(k)) {
+      acc[k] = v;
+    }
+    return acc;
+  }, {});
+
+  return updateUser(id, updates);
+}
+
+let loginSecurityColumnsEnsured = false;
+
+export async function ensureLoginSecurityColumns() {
+  if (loginSecurityColumnsEnsured) {
+    return;
+  }
+
+  const required = [
+    { name: "failed_login_attempts", ddl: "INT NOT NULL DEFAULT 0" },
+    { name: "lock_level", ddl: "TINYINT NOT NULL DEFAULT 0" },
+    { name: "locked_until", ddl: "DATETIME NULL" },
+    { name: "is_locked", ddl: "TINYINT(1) NOT NULL DEFAULT 0" },
+  ];
+
+  const [cols] = await pool.query("SHOW COLUMNS FROM users");
+  const available = new Set((cols || []).map((c) => String(c.Field || "").trim()));
+
+  for (const col of required) {
+    if (!available.has(col.name)) {
+      await pool.query(`ALTER TABLE users ADD COLUMN ${col.name} ${col.ddl}`);
+    }
+  }
+
+  loginSecurityColumnsEnsured = true;
 }
 
 export async function deleteUser(id) {
