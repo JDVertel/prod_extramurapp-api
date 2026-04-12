@@ -274,7 +274,7 @@
   },
 };
 
-export function parseJsonValue(value) {
+function parseJsonValue(value) {
   if (typeof value !== "string") {
     return value;
   }

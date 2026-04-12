@@ -1,3 +1,44 @@
+import { bulkCreateUsers, bulkCreateUsersFromCsv } from "../services/user.service.js";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+
+// Configuración de multer para guardar archivos temporalmente
+const upload = multer({ dest: "uploads/" });
+
+// Carga masiva de usuarios desde archivo CSV
+export const bulkCreateUsersController = [
+  upload.single("file"),
+  async (req, res) => {
+    const hasJsonUsers = Array.isArray(req.body?.users) && req.body.users.length > 0;
+    const hasUploadedFile = Boolean(req.file);
+
+    if (!hasJsonUsers && !hasUploadedFile) {
+      return res.status(400).json({ message: "No se recibieron usuarios ni archivo CSV" });
+    }
+
+    let filePath = null;
+
+    try {
+      let result;
+
+      if (hasJsonUsers) {
+        result = await bulkCreateUsers(req.body.users, req.user);
+      } else {
+        filePath = path.resolve(req.file.path);
+        result = await bulkCreateUsersFromCsv(filePath, req.user);
+      }
+
+      res.status(201).json(result);
+    } catch (err) {
+      res.status(err.statusCode || 500).json({ message: err.message });
+    } finally {
+      if (filePath && fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+  }
+];
 import {
   checkDocumentExists,
   checkEmailExists,

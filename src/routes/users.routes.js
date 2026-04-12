@@ -10,6 +10,7 @@ import {
   unlockUserController,
   updateUserPasswordController,
   updateUserController,
+  bulkCreateUsersController,
 } from "../controllers/users.controller.js";
 import { requireAuth } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/async-handler.js";
@@ -21,6 +22,7 @@ router.get("/exists/document/:numDocumento", asyncHandler(existsByDocumentContro
 
 router.use(requireAuth);
 
+router.post("/bulk", bulkCreateUsersController);
 router.get("", asyncHandler(listUsersController));
 router.get("/profesionales-delegados", asyncHandler(listDelegatedProfessionalsController));
 router.patch("/:id/password", asyncHandler(updateUserPasswordController));

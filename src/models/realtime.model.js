@@ -11,7 +11,7 @@ export function splitSegments(path = "") {
   return String(path).split("/").filter(Boolean);
 }
 
-export function isNumericSegment(segment) {
+function isNumericSegment(segment) {
   return /^\d+$/.test(String(segment));
 }
 

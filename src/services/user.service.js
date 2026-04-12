@@ -1,3 +1,93 @@
+// Nueva lógica de carga masiva de usuarios desde CSV
+import fs from 'fs';
+import path from 'path';
+import Papa from 'papaparse';
+
+function scoreDecodedCsv(value) {
+  const text = String(value || '');
+  let score = 0;
+
+  if (text.includes('\uFFFD')) {
+    score -= 10;
+  }
+
+  const accentedMatches = text.match(/[ÁÉÍÓÚáéíóúÑñÜü]/g);
+  if (accentedMatches) {
+    score += accentedMatches.length;
+  }
+
+  return score;
+}
+
+function decodeCsvBuffer(buffer) {
+  const utf8Text = buffer.toString('utf8');
+  const latin1Text = buffer.toString('latin1');
+
+  return scoreDecodedCsv(latin1Text) > scoreDecodedCsv(utf8Text)
+    ? latin1Text
+    : utf8Text;
+}
+
+function getBulkValue(row, keys) {
+  for (const key of keys) {
+    const value = row?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      return String(value).trim();
+    }
+  }
+  return '';
+}
+
+function mapBulkUserRow(row = {}) {
+  const documento = getBulkValue(row, ['Documento', 'documento', 'numDocumento', 'num_documento']);
+
+  return {
+    email: getBulkValue(row, ['Email', 'email']),
+    nombre: getBulkValue(row, ['Nombre', 'nombre']),
+    cargo: getBulkValue(row, ['Cargo', 'cargo']),
+    grupo: getBulkValue(row, ['Grupo', 'grupo']),
+    convenio: getBulkValue(row, ['Convenio', 'convenio']),
+    numDocumento: documento,
+    password: documento,
+    activo: true,
+    ipsId: getBulkValue(row, ['idips', 'ipsId', 'ips_id', 'ips']),
+  };
+}
+
+export async function bulkCreateUsers(rows, actor = null) {
+  ensure(Array.isArray(rows) && rows.length > 0, 'No se recibieron usuarios para procesar', 400);
+
+  let creados = 0;
+  let errores = 0;
+  const detalles = [];
+
+  for (const row of rows) {
+    const userPayload = mapBulkUserRow(row);
+    const rowEmail = userPayload.email || getBulkValue(row, ['Email', 'email']) || 'sin-email';
+
+    try {
+      await createUserRecord(userPayload, actor);
+      creados++;
+      detalles.push({ email: rowEmail, status: 'creado' });
+    } catch (err) {
+      errores++;
+      detalles.push({ email: rowEmail, status: 'error', error: err.message });
+    }
+  }
+
+  return { creados, errores, detalles };
+}
+
+export async function bulkCreateUsersFromCsv(filePath, actor = null) {
+  // Leer el archivo CSV
+  const csvBuffer = fs.readFileSync(path.resolve(filePath));
+  const csvContent = decodeCsvBuffer(csvBuffer);
+  const { data, errors } = Papa.parse(csvContent, { header: true, skipEmptyLines: true });
+  if (errors && errors.length > 0) {
+    throw new Error('Error al parsear el archivo CSV: ' + errors.map(e => e.message).join('; '));
+  }
+  return bulkCreateUsers(data, actor);
+}
 import { randomUUID } from "node:crypto";
 import { ensure, AppError } from "../utils/app-error.js";
 import { hashPassword } from "../utils/auth.js";
@@ -184,12 +274,12 @@ export async function createUserRecord(payload, actor = null) {
   const passwordHash = await hashPassword(payload.password);
   const actorIpsId = resolveActorIpsId(actor);
 
-  // El superusuario puede asignar la IPS destino en el payload.
-  // Los demás actores heredan siempre su IPS.
-  const payloadIpsId = normalizeIpsId(payload.ipsId ?? payload.ips);
-  const targetIpsId = actor?.cargo === "superusuario"
-    ? (payloadIpsId || actorIpsId)
-    : actorIpsId;
+  let targetIpsId = normalizeIpsId(payload.ipsId ?? payload.idips ?? payload.ips);
+
+  if (actor && shouldRestrictByActorIps(actor)) {
+    ensure(actorIpsId, "No se detectó una IPS válida en tu sesión", 400);
+    targetIpsId = actorIpsId;
+  }
 
   // superusuario y admin creados por superusuario pueden no tener IPS (superusuario global)
   if (targetCargo !== "superusuario") {
