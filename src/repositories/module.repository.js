@@ -210,6 +210,31 @@ function normalizeTextLen(value, maxLen) {
   return out.length > maxLen ? out.slice(0, maxLen) : out;
 }
 
+async function resolveEncuestaIpsId(encuestaId, fallbackIpsId = null) {
+  const encuestaIdNorm = normalizeTextLen(encuestaId, 36);
+  const fallbackNorm = normalizeIpsId(fallbackIpsId);
+
+  if (!encuestaIdNorm) {
+    return fallbackNorm;
+  }
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT ips_id FROM encuestas WHERE id = ? LIMIT 1`,
+      [encuestaIdNorm]
+    );
+
+    const encuestaIpsId = normalizeIpsId(rows?.[0]?.ips_id);
+    return encuestaIpsId || fallbackNorm;
+  } catch (error) {
+    console.warn("No se pudo resolver ips_id desde encuestas", {
+      encuestaId: encuestaIdNorm,
+      message: error?.message,
+    });
+    return fallbackNorm;
+  }
+}
+
 function extractActividadKeysFromLegacyPayload(payload = null) {
   if (!payload || typeof payload !== "object") {
     return [];
@@ -298,6 +323,8 @@ async function hydrateEncuestaActividadesFromHistory(encuestaId, ipsId = null) {
     return 0;
   }
 
+  const effectiveIpsId = await resolveEncuestaIpsId(encuestaIdNorm, ipsId);
+
   let legacyPayload = null;
   try {
     legacyPayload = await getRealtimeValue(`Actividades/${encuestaIdNorm}`);
@@ -323,7 +350,7 @@ async function hydrateEncuestaActividadesFromHistory(encuestaId, ipsId = null) {
        ON DUPLICATE KEY UPDATE
          ips_id = COALESCE(VALUES(ips_id), ips_id),
          actividad_key = VALUES(actividad_key)`,
-      [encuestaIdNorm, normalizeIpsId(ipsId), actividadKey]
+      [encuestaIdNorm, effectiveIpsId, actividadKey]
     );
   }
 
@@ -334,7 +361,7 @@ async function upsertEncuestaActividad(config, payload, { ipsId = null } = {}) {
   const normalized = normalizeModulePayload(payload, config.aliases || {});
   const encuestaId = normalizeTextLen(normalized.encuesta_id, 36);
   const actividadKey = normalizeTextLen(normalized.actividad_key, 60);
-  const effectiveIpsId = normalizeIpsId(normalized.ips_id ?? ipsId);
+  const effectiveIpsId = await resolveEncuestaIpsId(encuestaId, normalized.ips_id ?? ipsId);
 
   if (!encuestaId || !actividadKey) {
     return { status: "empty-payload", row: null };
@@ -823,6 +850,16 @@ export async function listModuleRows(config, { limit = 100, offset = 0, ipsId = 
 
   if (config.moduleName === "asignaciones") {
     return listAsignacionesRows(config, { limit, offset, ipsId });
+  }
+
+  if (config.moduleName === "encuesta_actividades") {
+    const whereClause = ipsId ? "WHERE (ips_id = ? OR ips_id IS NULL OR ips_id = '')" : "";
+    const params = ipsId ? [ipsId, limit, offset] : [limit, offset];
+    const [rows] = await pool.query(
+      `SELECT * FROM ${config.table} ${whereClause} ORDER BY ${config.pk} DESC LIMIT ? OFFSET ?`,
+      params
+    );
+    return rows.map((row) => toModuleRow(row, config));
   }
 
   const whereClause = hasIpsColumn(config) && ipsId ? "WHERE ips_id = ?" : "";
