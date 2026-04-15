@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { pool } from "../utils/database.js";
+import { getRealtimeValue } from "../services/realtime.service.js";
 import {
   MODULES,
   normalizeModulePayload,
@@ -207,6 +208,124 @@ function normalizeTextLen(value, maxLen) {
     return null;
   }
   return out.length > maxLen ? out.slice(0, maxLen) : out;
+}
+
+function extractActividadKeysFromLegacyPayload(payload = null) {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const tipoActividad = payload?.tipoActividad && typeof payload.tipoActividad === "object"
+    ? payload.tipoActividad
+    : payload;
+
+  if (!tipoActividad || typeof tipoActividad !== "object") {
+    return [];
+  }
+
+  const keys = new Set();
+
+  Object.entries(tipoActividad).forEach(([actividadId, actividad]) => {
+    if (typeof actividad === "string") {
+      const key = normalizeTextLen(actividad, 60);
+      if (key) keys.add(key);
+      return;
+    }
+
+    if (typeof actividad === "boolean") {
+      if (actividad) {
+        const key = normalizeTextLen(actividadId, 60);
+        if (key) keys.add(key);
+      }
+      return;
+    }
+
+    if (actividad && typeof actividad === "object") {
+      const key = normalizeTextLen(
+        actividad.key ?? actividad.clave ?? actividad.actividadKey ?? actividad.actividadId ?? actividadId,
+        60
+      );
+      if (key) keys.add(key);
+      return;
+    }
+
+    const fallbackKey = normalizeTextLen(actividadId, 60);
+    if (fallbackKey) {
+      keys.add(fallbackKey);
+    }
+  });
+
+  return Array.from(keys);
+}
+
+async function hydrateEncuestaActividadesFromHistory(encuestaId, ipsId = null) {
+  const encuestaIdNorm = normalizeTextLen(encuestaId, 36);
+  if (!encuestaIdNorm) {
+    return 0;
+  }
+
+  let legacyPayload = null;
+  try {
+    legacyPayload = await getRealtimeValue(`Actividades/${encuestaIdNorm}`);
+  } catch (error) {
+    console.warn("No se pudo leer histórico realtime para encuesta_actividades", {
+      encuestaId: encuestaIdNorm,
+      message: error?.message,
+    });
+    return 0;
+  }
+
+  const actividadKeys = extractActividadKeysFromLegacyPayload(legacyPayload);
+  if (!actividadKeys.length) {
+    return 0;
+  }
+
+  for (const actividadKey of actividadKeys) {
+    await pool.query(
+      `INSERT INTO encuesta_actividades (encuesta_id, ips_id, actividad_key)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         ips_id = COALESCE(VALUES(ips_id), ips_id),
+         actividad_key = VALUES(actividad_key)`,
+      [encuestaIdNorm, normalizeIpsId(ipsId), actividadKey]
+    );
+  }
+
+  return actividadKeys.length;
+}
+
+async function upsertEncuestaActividad(config, payload, { ipsId = null } = {}) {
+  const normalized = normalizeModulePayload(payload, config.aliases || {});
+  const encuestaId = normalizeTextLen(normalized.encuesta_id, 36);
+  const actividadKey = normalizeTextLen(normalized.actividad_key, 60);
+  const effectiveIpsId = normalizeIpsId(normalized.ips_id ?? ipsId);
+
+  if (!encuestaId || !actividadKey) {
+    return { status: "empty-payload", row: null };
+  }
+
+  await hydrateEncuestaActividadesFromHistory(encuestaId, effectiveIpsId);
+
+  await pool.query(
+    `INSERT INTO encuesta_actividades (encuesta_id, ips_id, actividad_key)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       ips_id = COALESCE(VALUES(ips_id), ips_id),
+       actividad_key = VALUES(actividad_key)`,
+    [encuestaId, effectiveIpsId, actividadKey]
+  );
+
+  const [rows] = await pool.query(
+    `SELECT * FROM encuesta_actividades
+     WHERE encuesta_id = ? AND actividad_key = ?
+     LIMIT 1`,
+    [encuestaId, actividadKey]
+  );
+
+  return {
+    status: "created",
+    row: rows.length ? toModuleRow(rows[0], config) : null,
+  };
 }
 
 function normalizeDateTimeForMySql(value) {
@@ -707,6 +826,10 @@ export async function createModuleRow(config, payload, { ipsId = null } = {}) {
 
   if (config.moduleName === "asignaciones") {
     return upsertAsignacion(config, payload, payload?.encuestaId ?? payload?.encuesta_id ?? null, { ipsId });
+  }
+
+  if (config.moduleName === "encuesta_actividades") {
+    return upsertEncuestaActividad(config, payload, { ipsId });
   }
 
   const normalized = normalizeModulePayload(payload, config.aliases);
