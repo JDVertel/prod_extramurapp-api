@@ -258,6 +258,40 @@ function extractActividadKeysFromLegacyPayload(payload = null) {
   return Array.from(keys);
 }
 
+async function listActividadKeysFromAsignacionHistory(encuestaId) {
+  const encuestaIdNorm = normalizeTextLen(encuestaId, 36);
+  if (!encuestaIdNorm) {
+    return [];
+  }
+
+  const keys = new Set();
+
+  try {
+    const [rows] = await pool.query(
+      `SELECT DISTINCT actividad_id
+       FROM asignacion_cups
+       WHERE encuesta_id = ?
+         AND actividad_id IS NOT NULL
+         AND actividad_id <> ''`,
+      [encuestaIdNorm]
+    );
+
+    rows.forEach((row) => {
+      const key = normalizeTextLen(row?.actividad_id, 60);
+      if (key) {
+        keys.add(key);
+      }
+    });
+  } catch (error) {
+    console.warn("No se pudo leer historial de actividades desde asignacion_cups", {
+      encuestaId: encuestaIdNorm,
+      message: error?.message,
+    });
+  }
+
+  return Array.from(keys);
+}
+
 async function hydrateEncuestaActividadesFromHistory(encuestaId, ipsId = null) {
   const encuestaIdNorm = normalizeTextLen(encuestaId, 36);
   if (!encuestaIdNorm) {
@@ -272,11 +306,13 @@ async function hydrateEncuestaActividadesFromHistory(encuestaId, ipsId = null) {
       encuestaId: encuestaIdNorm,
       message: error?.message,
     });
-    return 0;
   }
 
-  const actividadKeys = extractActividadKeysFromLegacyPayload(legacyPayload);
-  if (!actividadKeys.length) {
+  const actividadKeys = new Set(extractActividadKeysFromLegacyPayload(legacyPayload));
+  const assignmentKeys = await listActividadKeysFromAsignacionHistory(encuestaIdNorm);
+  assignmentKeys.forEach((key) => actividadKeys.add(key));
+
+  if (!actividadKeys.size) {
     return 0;
   }
 
@@ -291,7 +327,7 @@ async function hydrateEncuestaActividadesFromHistory(encuestaId, ipsId = null) {
     );
   }
 
-  return actividadKeys.length;
+  return actividadKeys.size;
 }
 
 async function upsertEncuestaActividad(config, payload, { ipsId = null } = {}) {
