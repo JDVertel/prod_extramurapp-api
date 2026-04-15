@@ -24,6 +24,8 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX idx_users_ips_id (ips_id)
+  ,INDEX idx_users_ips_nombre (ips_id, nombre)
+  ,INDEX idx_users_cargo_activo (cargo, activo)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -133,7 +135,8 @@ CREATE TABLE IF NOT EXISTS contrato_cups (
   INDEX idx_contrato_cups_contrato (contrato_id),
   INDEX idx_contrato_cups_cups (cups_id),
   INDEX idx_contrato_cups_actividad (actividad_id),
-  UNIQUE KEY uq_contrato_cups (contrato_id, cups_id, actividad_id)
+  UNIQUE KEY uq_contrato_cups (contrato_id, cups_id, actividad_id),
+  CONSTRAINT fk_contrato_cups_contrato FOREIGN KEY (contrato_id) REFERENCES contratos(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
@@ -216,7 +219,14 @@ CREATE TABLE IF NOT EXISTS encuestas (
   INDEX idx_encuestas_status_facturacion (status_facturacion),
   INDEX idx_encuestas_id_encuestador (id_encuestador),
   INDEX idx_encuestas_id_nutricionista_atiende (id_nutricionista_atiende),
-  INDEX idx_encuestas_created_at (created_at)
+  INDEX idx_encuestas_created_at (created_at),
+  INDEX idx_encuestas_aux_bandeja (id_encuestador, status_gest_aux, status_visita),
+  INDEX idx_encuestas_medico_bandeja (id_medico_atiende, status_gest_aux, status_gest_medica),
+  INDEX idx_encuestas_enfermero_bandeja (id_enfermero_atiende, status_gest_aux, status_gest_enfermera),
+  INDEX idx_encuestas_psicologo_bandeja (id_psicologo_atiende, status_gest_aux, status_gest_psicologo),
+  INDEX idx_encuestas_tsocial_bandeja (id_tsocial_atiende, status_gest_aux, status_gest_tsocial),
+  INDEX idx_encuestas_nutricionista_bandeja (id_nutricionista_atiende, status_gest_aux, status_gest_nutricionista),
+  INDEX idx_encuestas_convenio_fecha (convenio, fecha)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
@@ -229,6 +239,7 @@ CREATE TABLE IF NOT EXISTS encuesta_actividades (
   encuesta_id VARCHAR(36) NOT NULL,
   actividad_key VARCHAR(60) NOT NULL,
   INDEX idx_encuesta_actividades_ips_id (ips_id),
+  INDEX idx_encuesta_actividades_encuesta_ips (encuesta_id, ips_id),
   UNIQUE KEY uq_encuesta_actividad (encuesta_id, actividad_key),
   CONSTRAINT fk_act_encuesta FOREIGN KEY (encuesta_id) REFERENCES encuestas(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -272,7 +283,9 @@ CREATE TABLE IF NOT EXISTS asignacion_cups (
   INDEX idx_asignacion_cups_encuesta (encuesta_id),
   INDEX idx_asignacion_cups_actividad (actividad_id),
   INDEX idx_asignacion_cups_cups (cups_id),
-  UNIQUE KEY uq_asignacion_cups (encuesta_id, cups_id, actividad_id)
+  INDEX idx_asignacion_cups_encuesta_actividad (encuesta_id, actividad_id),
+  UNIQUE KEY uq_asignacion_cups (encuesta_id, cups_id, actividad_id),
+  CONSTRAINT fk_asignacion_cups_encuesta FOREIGN KEY (encuesta_id) REFERENCES encuestas(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================

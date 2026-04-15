@@ -843,7 +843,7 @@ async function upsertAsignacion(config, payload, id = null, { ipsId = null } = {
   return { status: "updated", row: await findAsignacionById(config, normalized.encuesta_id, { ipsId }) };
 }
 
-export async function listModuleRows(config, { limit = 100, offset = 0, ipsId = null } = {}) {
+export async function listModuleRows(config, { limit = 100, offset = 0, ipsId = null, filters = {} } = {}) {
   if (config.moduleName === "contratos") {
     return listContratosRows(config, { limit, offset, ipsId });
   }
@@ -853,8 +853,22 @@ export async function listModuleRows(config, { limit = 100, offset = 0, ipsId = 
   }
 
   if (config.moduleName === "encuesta_actividades") {
-    const whereClause = ipsId ? "WHERE (ips_id = ? OR ips_id IS NULL OR ips_id = '')" : "";
-    const params = ipsId ? [ipsId, limit, offset] : [limit, offset];
+    const encuestaId = normalizeTextLen(filters?.encuestaId ?? filters?.encuesta_id, 36);
+    const whereParts = [];
+    const params = [];
+
+    if (encuestaId) {
+      whereParts.push("encuesta_id = ?");
+      params.push(encuestaId);
+    }
+
+    if (ipsId) {
+      whereParts.push("(ips_id = ? OR ips_id IS NULL OR ips_id = '')");
+      params.push(ipsId);
+    }
+
+    const whereClause = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
+    params.push(limit, offset);
     const [rows] = await pool.query(
       `SELECT * FROM ${config.table} ${whereClause} ORDER BY ${config.pk} DESC LIMIT ? OFFSET ?`,
       params

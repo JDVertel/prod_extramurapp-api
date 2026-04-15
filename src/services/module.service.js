@@ -80,6 +80,7 @@ export async function listModule(moduleName, query, actor = null) {
   return listModuleRows(config, {
     limit,
     offset,
+    filters: query,
     ipsId: shouldRestrictByActorIps(actor) ? actorIpsId : null,
   });
 }
