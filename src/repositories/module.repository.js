@@ -311,6 +311,9 @@ function toContratoCupPayload(row = {}) {
 function normalizeAsignacionPayload(payload = {}, id = null) {
   const normalized = normalizeModulePayload(payload, MODULES.asignaciones.aliases || {});
   const legacy = payload?.datos && typeof payload.datos === "object" ? payload.datos : payload;
+  const hasOwnCups = Object.prototype.hasOwnProperty.call(payload || {}, "cups")
+    || Object.prototype.hasOwnProperty.call(legacy || {}, "cups")
+    || Object.prototype.hasOwnProperty.call(normalized || {}, "cups");
 
   return {
     encuesta_id: normalizeTextLen(id || normalized.encuesta_id || legacy.idEncuesta, 36),
@@ -319,6 +322,7 @@ function normalizeAsignacionPayload(payload = {}, id = null) {
     nombre_prof: normalizeTextLen(normalized.nombre_prof ?? legacy.nombreProf ?? legacy.nombrePtof, 190),
     convenio: normalizeTextLen(normalized.convenio ?? legacy.convenio, 120),
     cups: normalizeArray(legacy.cups ?? normalized.cups),
+    has_cups: hasOwnCups,
   };
 }
 
@@ -471,8 +475,8 @@ async function saveAsignacionCups(encuestaId, cups = [], fallback = {}) {
     .map((cup) => normalizeAsignacionCup(cup, { ...fallback, encuesta_id: encuestaId }))
     .filter((row) => row.cups_id && row.cups_nombre);
 
-  // Evita borrado destructivo cuando llega un PATCH parcial (ej. solo FactNum).
-  if (!rowsRaw.length) {
+  // Evita borrado destructivo cuando llega un PATCH parcial que no incluye cups.
+  if (!fallback.has_cups && !rowsRaw.length) {
     return;
   }
 

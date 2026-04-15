@@ -7,6 +7,7 @@ import {
   createPasswordResetToken,
   ensureLoginSecurityColumns,
   createUser,
+  findUserCredentialsById,
   findUserForLogin,
   findUserIdByEmail,
   findValidPasswordResetToken,
@@ -231,6 +232,18 @@ export async function resetPassword(payload) {
 
 export async function changePassword(userId, payload) {
   ensure(payload.newPassword && String(payload.newPassword).length >= 6, "La contrasena debe tener al menos 6 caracteres", 400);
+
+  const user = await findUserCredentialsById(userId);
+  if (!user) {
+    throw new AppError("Usuario no encontrado", 404);
+  }
+
+  if (!Boolean(user.must_change_password)) {
+    ensure(payload.currentPassword, "La contrasena actual es obligatoria", 400);
+
+    const currentPasswordIsValid = await verifyPassword(String(payload.currentPassword), user.password_hash);
+    ensure(currentPasswordIsValid, "La contrasena actual no es correcta", 401);
+  }
 
   const passwordHash = await hashPassword(String(payload.newPassword));
   const affected = await updateUser(userId, {

@@ -34,6 +34,18 @@ export async function findUserById(id) {
   return rows[0] || null;
 }
 
+export async function findUserCredentialsById(id) {
+  const [rows] = await pool.query(
+    `SELECT id, password_hash, must_change_password
+     FROM users
+     WHERE id = ?
+     LIMIT 1`,
+    [id]
+  );
+
+  return rows[0] || null;
+}
+
 export async function listUsers() {
   const [rows] = await pool.query(
     `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password,
