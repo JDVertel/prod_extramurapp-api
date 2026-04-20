@@ -23,6 +23,30 @@ const tableExistingColumnsCache = new Map();
 const tablePkAutoIncrementCache = new Map();
 const tablePkNumericCache = new Map();
 let asignacionCupsFacturacionColumnsEnsured = false;
+let deletedRecordsTableEnsured = false;
+
+async function ensureDeletedRecordsTable() {
+  if (deletedRecordsTableEnsured) {
+    return;
+  }
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS deleted_records (
+      id VARCHAR(36) PRIMARY KEY,
+      module_name VARCHAR(80) NOT NULL,
+      record_id VARCHAR(80) NOT NULL,
+      ips_id VARCHAR(36) NULL,
+      deleted_by VARCHAR(120) NULL,
+      payload_json LONGTEXT NOT NULL,
+      deleted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      INDEX idx_deleted_records_module (module_name),
+      INDEX idx_deleted_records_record (record_id),
+      INDEX idx_deleted_records_deleted_at (deleted_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  deletedRecordsTableEnsured = true;
+}
 
 async function ensureAsignacionCupsFacturacionColumns() {
   if (asignacionCupsFacturacionColumnsEnsured) {
@@ -210,6 +234,34 @@ function normalizeTextLen(value, maxLen) {
   return out.length > maxLen ? out.slice(0, maxLen) : out;
 }
 
+function resolveDeletedBy(actor = null) {
+  return normalizeTextLen(
+    actor?.id ?? actor?.uid ?? actor?.documento ?? actor?.numdoc ?? actor?.email,
+    120
+  );
+}
+
+async function archiveDeletedModuleRow(moduleName, recordId, payload, { ipsId = null, actor = null } = {}) {
+  if (!payload) {
+    return;
+  }
+
+  await ensureDeletedRecordsTable();
+
+  await pool.query(
+    `INSERT INTO deleted_records (id, module_name, record_id, ips_id, deleted_by, payload_json)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      randomUUID(),
+      normalizeTextLen(moduleName, 80) || "desconocido",
+      normalizeTextLen(recordId, 80) || randomUUID(),
+      normalizeIpsId(ipsId ?? payload?.ipsId ?? payload?.ips_id),
+      resolveDeletedBy(actor),
+      JSON.stringify(payload),
+    ]
+  );
+}
+
 async function resolveEncuestaIpsId(encuestaId, fallbackIpsId = null) {
   const encuestaIdNorm = normalizeTextLen(encuestaId, 36);
   const fallbackNorm = normalizeIpsId(fallbackIpsId);
@@ -345,12 +397,12 @@ async function hydrateEncuestaActividadesFromHistory(encuestaId, ipsId = null) {
 
   for (const actividadKey of actividadKeys) {
     await pool.query(
-      `INSERT INTO encuesta_actividades (encuesta_id, ips_id, actividad_key)
-       VALUES (?, ?, ?)
+      `INSERT INTO encuesta_actividades (id, encuesta_id, ips_id, actividad_key)
+       VALUES (?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          ips_id = COALESCE(VALUES(ips_id), ips_id),
          actividad_key = VALUES(actividad_key)`,
-      [encuestaIdNorm, effectiveIpsId, actividadKey]
+      [generateNumericId(), encuestaIdNorm, effectiveIpsId, actividadKey]
     );
   }
 
@@ -370,12 +422,12 @@ async function upsertEncuestaActividad(config, payload, { ipsId = null } = {}) {
   await hydrateEncuestaActividadesFromHistory(encuestaId, effectiveIpsId);
 
   await pool.query(
-    `INSERT INTO encuesta_actividades (encuesta_id, ips_id, actividad_key)
-     VALUES (?, ?, ?)
+    `INSERT INTO encuesta_actividades (id, encuesta_id, ips_id, actividad_key)
+     VALUES (?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        ips_id = COALESCE(VALUES(ips_id), ips_id),
        actividad_key = VALUES(actividad_key)`,
-    [encuestaId, effectiveIpsId, actividadKey]
+    [generateNumericId(), encuestaId, effectiveIpsId, actividadKey]
   );
 
   const [rows] = await pool.query(
@@ -1082,8 +1134,11 @@ export async function updateModuleRow(config, id, payload, { replace = false, ip
   return { status: "updated", row: await findModuleRowById(config, id, { ipsId }) };
 }
 
-export async function deleteModuleRow(config, id, { ipsId = null } = {}) {
+export async function deleteModuleRow(config, id, { ipsId = null, actor = null } = {}) {
   if (config.moduleName === "contratos") {
+    const snapshot = await findContratoById(config, id, { ipsId });
+    await archiveDeletedModuleRow(config.moduleName, id, snapshot, { ipsId, actor });
+
     const whereClause = ipsId ? "id = ? AND ips_id = ?" : "id = ?";
     const params = ipsId ? [id, ipsId] : [id];
     const [result] = await pool.query(`DELETE FROM contratos WHERE ${whereClause}`, params);
@@ -1091,11 +1146,18 @@ export async function deleteModuleRow(config, id, { ipsId = null } = {}) {
   }
 
   if (config.moduleName === "asignaciones") {
+    const snapshot = await findAsignacionById(config, id, { ipsId });
+    await archiveDeletedModuleRow(config.moduleName, id, snapshot, { ipsId, actor });
+    await pool.query("DELETE FROM asignacion_cups WHERE encuesta_id = ?", [id]);
+
     const whereClause = ipsId ? "encuesta_id = ? AND ips_id = ?" : "encuesta_id = ?";
     const params = ipsId ? [id, ipsId] : [id];
     const [result] = await pool.query(`DELETE FROM asignaciones WHERE ${whereClause}`, params);
     return result.affectedRows;
   }
+
+  const snapshot = await findModuleRowById(config, id, { ipsId });
+  await archiveDeletedModuleRow(config.moduleName, id, snapshot, { ipsId, actor });
 
   const whereClause = hasIpsColumn(config) && ipsId
     ? `${config.pk} = ? AND ips_id = ?`

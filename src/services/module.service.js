@@ -154,6 +154,7 @@ export async function removeModule(moduleName, id, actor = null) {
   const actorIpsId = resolveScopedIpsId(config, actor, { requireWhenRestricted: true });
   const affected = await deleteModuleRow(config, id, {
     ipsId: shouldRestrictByActorIps(actor) ? actorIpsId : null,
+    actor,
   });
 
   if (!affected) {
