@@ -15,7 +15,7 @@ import {
   updateUser,
 } from "../repositories/user.repository.js";
 
-const MAX_LOGIN_ATTEMPTS = 3;
+const MAX_LOGIN_ATTEMPTS = 5;
 
 function getLockDurationMinutes(nextLevel) {
   if (nextLevel === 1) return 30;
