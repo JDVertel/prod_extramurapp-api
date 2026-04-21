@@ -846,12 +846,12 @@ async function safeGetUserById(id, actor) {
   }
 }
 
-export async function getRealtimeValue(inputPath, actor = null) {
+export async function getRealtimeValue(inputPath, actor = null, query = {}) {
   const { root, id, rest } = toRouteInfo(inputPath);
 
   if (root === "encuesta") {
     if (!id) {
-      const rows = await listModule("encuestas", { limit: 5000, offset: 0 }, actor);
+      const rows = await listModule("encuestas", { ...query, limit: query?.limit ?? 5000, offset: query?.offset ?? 0 }, actor);
       return buildEncuestasMap(rows);
     }
 

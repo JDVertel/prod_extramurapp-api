@@ -234,6 +234,46 @@ function normalizeTextLen(value, maxLen) {
   return out.length > maxLen ? out.slice(0, maxLen) : out;
 }
 
+function normalizeBooleanFilter(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  if (typeof value === "boolean") {
+    return value ? 1 : 0;
+  }
+
+  const raw = String(value).trim().toLowerCase();
+  if (!raw) {
+    return null;
+  }
+
+  if (["1", "true", "si", "sí", "yes"].includes(raw)) {
+    return 1;
+  }
+
+  if (["0", "false", "no"].includes(raw)) {
+    return 0;
+  }
+
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed)) {
+    return parsed >= 1 ? 1 : 0;
+  }
+
+  return null;
+}
+
+function getFirstFilterValue(filters = {}, keys = []) {
+  for (const key of keys) {
+    if (filters?.[key] !== undefined && filters?.[key] !== null && String(filters[key]).trim() !== "") {
+      return filters[key];
+    }
+  }
+
+  return null;
+}
+
 function resolveDeletedBy(actor = null) {
   return normalizeTextLen(
     actor?.id ?? actor?.uid ?? actor?.documento ?? actor?.numdoc ?? actor?.email,
@@ -915,6 +955,99 @@ export async function listModuleRows(config, { limit = 100, offset = 0, ipsId = 
     if (ipsId) {
       whereParts.push("(ips_id = ? OR ips_id IS NULL OR ips_id = '')");
       params.push(ipsId);
+    }
+
+    const whereClause = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
+    params.push(limit, offset);
+    const [rows] = await pool.query(
+      `SELECT * FROM ${config.table} ${whereClause} ORDER BY ${config.pk} DESC LIMIT ? OFFSET ?`,
+      params
+    );
+    return rows.map((row) => toModuleRow(row, config));
+  }
+
+  if (config.moduleName === "encuestas") {
+    const whereParts = [];
+    const params = [];
+
+    if (hasIpsColumn(config) && ipsId) {
+      whereParts.push("ips_id = ?");
+      params.push(ipsId);
+    }
+
+    const exactTextFilters = [
+      ["id", ["id"]],
+      ["tipodoc", ["tipodoc"]],
+      ["numdoc", ["numdoc"]],
+      ["id_encuestador", ["idEncuestador", "id_encuestador"]],
+      ["id_medico_atiende", ["idMedicoAtiende", "id_medico_atiende"]],
+      ["id_enfermero_atiende", ["idEnfermeroAtiende", "id_enfermero_atiende"]],
+      ["id_psicologo_atiende", ["idPsicologoAtiende", "id_psicologo_atiende"]],
+      ["id_tsocial_atiende", ["idTsocialAtiende", "id_tsocial_atiende"]],
+      ["id_nutricionista_atiende", ["idNutricionistaAtiende", "idNutriAtiende", "idNutricionista", "idNutricionAtiende", "id_nutricionista_atiende"]],
+      ["convenio", ["convenio"]],
+    ];
+
+    exactTextFilters.forEach(([columnName, aliases]) => {
+      const filterValue = normalizeTextLen(getFirstFilterValue(filters, aliases), 120);
+      if (!filterValue) {
+        return;
+      }
+
+      whereParts.push(`${columnName} = ?`);
+      params.push(filterValue);
+    });
+
+    const booleanFilters = [
+      ["status_gest_aux", ["status_gest_aux"]],
+      ["status_gest_medica", ["status_gest_medica"]],
+      ["status_gest_enfermera", ["status_gest_enfermera"]],
+      ["status_gest_psicologo", ["status_gest_psicologo"]],
+      ["status_gest_tsocial", ["status_gest_tsocial"]],
+      ["status_gest_nutricionista", ["status_gest_nutricionista", "status_gest_nutri"]],
+      ["status_visita", ["status_visita"]],
+      ["status_caracterizacion", ["status_caracterizacion"]],
+      ["status_facturacion", ["status_facturacion"]],
+    ];
+
+    booleanFilters.forEach(([columnName, aliases]) => {
+      const filterValue = normalizeBooleanFilter(getFirstFilterValue(filters, aliases));
+      if (filterValue === null) {
+        return;
+      }
+
+      whereParts.push(`${columnName} = ?`);
+      params.push(filterValue);
+    });
+
+    const whereClause = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
+    params.push(limit, offset);
+    const [rows] = await pool.query(
+      `SELECT * FROM ${config.table} ${whereClause} ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
+      params
+    );
+    return rows.map((row) => toModuleRow(row, config));
+  }
+
+  if (config.moduleName === "caracterizacion") {
+    const whereParts = [];
+    const params = [];
+
+    if (hasIpsColumn(config) && ipsId) {
+      whereParts.push("ips_id = ?");
+      params.push(ipsId);
+    }
+
+    const convenio = normalizeTextLen(getFirstFilterValue(filters, ["convenio"]), 120);
+    if (convenio) {
+      whereParts.push("convenio = ?");
+      params.push(convenio);
+    }
+
+    const encuestaId = normalizeTextLen(getFirstFilterValue(filters, ["encuestaId", "encuesta_id"]), 36);
+    if (encuestaId) {
+      whereParts.push("encuesta_id = ?");
+      params.push(encuestaId);
     }
 
     const whereClause = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";

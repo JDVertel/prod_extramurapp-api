@@ -15,7 +15,7 @@ function resolveRealtimePath(req) {
 }
 
 export async function getRealtimeController(req, res) {
-  res.json(await getRealtimeValue(resolveRealtimePath(req), req.user));
+  res.json(await getRealtimeValue(resolveRealtimePath(req), req.user, req.query ?? {}));
 }
 
 export async function postRealtimeController(req, res) {
