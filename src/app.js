@@ -8,7 +8,9 @@ import { config } from "./utils/config.js";
 
 export function createApp() {
   const app = express();
+  const isProduction = config.nodeEnv === "production";
 
+  app.disable("x-powered-by");
   app.use(helmet());
   app.use(cors({
     origin(origin, callback) {
@@ -21,7 +23,13 @@ export function createApp() {
     },
   }));
   app.use(express.json({ limit: "5mb" }));
-  app.use(morgan("dev"));
+  app.use(
+    morgan(isProduction ? "tiny" : "dev", {
+      skip(req) {
+        return isProduction && req.path === "/api/health";
+      },
+    })
+  );
 
   app.use("/api", apiRoutes);
   app.use(errorHandler);
