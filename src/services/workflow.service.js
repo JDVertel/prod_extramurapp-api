@@ -21,6 +21,36 @@ function resolveActorIpsId(actor) {
   return normalizeIpsId(actor?.ipsId ?? actor?.ips_id ?? actor?.ips);
 }
 
+function normalizeDecimalValue(value, fieldLabel) {
+  if (value === undefined || value === null) {
+    return null;
+  }
+
+  const raw = String(value).trim();
+  if (!raw) {
+    return null;
+  }
+
+  const normalized = raw.replace(/,/g, ".");
+  ensure(/^-?\d+(\.\d+)?$/.test(normalized), `${fieldLabel} tiene un formato inválido`, 400, {
+    field: fieldLabel,
+    value,
+  });
+
+  const parsed = Number(normalized);
+  ensure(Number.isFinite(parsed), `${fieldLabel} debe ser numérico`, 400, {
+    field: fieldLabel,
+    value,
+  });
+
+  ensure(Math.abs(parsed) <= 999.99, `${fieldLabel} está fuera del rango permitido`, 400, {
+    field: fieldLabel,
+    value,
+  });
+
+  return Number(parsed.toFixed(2));
+}
+
 function shouldRestrictByActorIps(actor) {
   return actor?.cargo !== "superusuario";
 }
@@ -120,6 +150,26 @@ function buildCaracterizacionInsertData(payload, encuestaRow, actor = null) {
   insertData.ips_id = normalizeIpsId(insertData.ips_id ?? encuestaRow?.ips_id ?? resolveActorIpsId(actor));
   insertData.convenio = insertData.convenio ?? encuestaRow?.convenio ?? null;
 
+  const decimalFields = {
+    peso: "Peso",
+    talla: "Talla",
+    tension_sistolica: "Tensión sistólica",
+    tension_diastolica: "Tensión diastólica",
+    perimetro_abdominal: "Perímetro abdominal",
+    perimetro_branquial: "Perímetro branquial",
+    oximetria: "Oximetría",
+    temperatura: "Temperatura",
+    imc: "IMC",
+  };
+
+  Object.entries(decimalFields).forEach(([column, label]) => {
+    if (insertData[column] === undefined) {
+      return;
+    }
+
+    insertData[column] = normalizeDecimalValue(insertData[column], label);
+  });
+
   return insertData;
 }
 
@@ -127,21 +177,43 @@ async function upsertCaracterizacion(conn, payload, encuestaRow, actor = null) {
   const insertData = buildCaracterizacionInsertData(payload, encuestaRow, actor);
   ensure(insertData.encuesta_id, "idEncuesta es obligatorio", 400);
 
+  const [existingRows] = await conn.query(
+    "SELECT id FROM caracterizacion WHERE encuesta_id = ? LIMIT 1 FOR UPDATE",
+    [insertData.encuesta_id]
+  );
+
+  if (existingRows.length) {
+    const updateCols = Object.keys(insertData).filter(
+      (column) => column !== "id" && column !== "encuesta_id" && column !== "created_at"
+    );
+
+    if (!updateCols.length) {
+      return existingRows[0].id;
+    }
+
+    const updateClause = updateCols.map((column) => `${column} = ?`).join(", ");
+    const updateValues = updateCols.map((column) => insertData[column]);
+
+    await conn.query(
+      `UPDATE caracterizacion SET ${updateClause} WHERE encuesta_id = ?`,
+      [...updateValues, insertData.encuesta_id]
+    );
+
+    return existingRows[0].id;
+  }
+
   const cols = Object.keys(insertData);
   ensure(cols.length > 0, "Payload de caracterizacion vacio", 400);
 
   const placeholders = cols.map(() => "?").join(", ");
   const values = cols.map((column) => insertData[column]);
-  const updateCols = cols.filter((column) => column !== "id" && column !== "encuesta_id");
-  const updateClause = updateCols
-    .map((column) => `${column} = VALUES(${column})`)
-    .join(", ");
 
   await conn.query(
-    `INSERT INTO caracterizacion (${cols.join(", ")}) VALUES (${placeholders})
-     ON DUPLICATE KEY UPDATE ${updateClause}`,
+    `INSERT INTO caracterizacion (${cols.join(", ")}) VALUES (${placeholders})`,
     values
   );
+
+  return insertData.id;
 }
 
 export async function saveCaracterizacionAndMarkEncuesta(payload, actor = null) {

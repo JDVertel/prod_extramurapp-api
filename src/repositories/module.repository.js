@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { pool } from "../utils/database.js";
-import { getRealtimeValue } from "../services/realtime.service.js";
+import { getRealtimeValue } from "../services/realtime-store.service.js";
 import {
   MODULES,
   normalizeModulePayload,
@@ -418,8 +418,6 @@ async function upsertEncuestaActividad(config, payload, { ipsId = null } = {}) {
   if (!encuestaId || !actividadKey) {
     return { status: "empty-payload", row: null };
   }
-
-  await hydrateEncuestaActividadesFromHistory(encuestaId, effectiveIpsId);
 
   await pool.query(
     `INSERT INTO encuesta_actividades (id, encuesta_id, ips_id, actividad_key)
