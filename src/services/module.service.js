@@ -1,4 +1,5 @@
 import { ensure, AppError } from "../utils/app-error.js";
+import { getRealtimeValue } from "./realtime-store.service.js";
 import {
   createModuleRow,
   deleteModuleRow,
@@ -30,6 +31,118 @@ function shouldRestrictByActorIps(actor) {
 
 function hasIpsColumn(config) {
   return Array.isArray(config?.columns) && config.columns.includes("ips_id");
+}
+
+function isEmptyCaracterizacionValue(value) {
+  if (value === undefined || value === null) {
+    return true;
+  }
+
+  if (typeof value === "string") {
+    return value.trim() === "";
+  }
+
+  if (Array.isArray(value)) {
+    return value.length === 0;
+  }
+
+  if (typeof value === "object") {
+    return Object.keys(value).length === 0;
+  }
+
+  return false;
+}
+
+function pickLegacyCaracterizacionField(payload, keys = []) {
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(payload || {}, key)) {
+      continue;
+    }
+
+    const value = payload[key];
+    if (!isEmptyCaracterizacionValue(value)) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function buildLegacyCaracterizacionOverlay(payload = {}) {
+  return {
+    visita: pickLegacyCaracterizacionField(payload, ["visita"]),
+    tipo_visita: pickLegacyCaracterizacionField(payload, ["tipo_visita", "tipoVisita", "tipovisita"]),
+    tipo_vivienda: pickLegacyCaracterizacionField(payload, ["tipo_vivienda", "tipoVivienda", "tipovivienda"]),
+    estado: pickLegacyCaracterizacionField(payload, ["estado", "estadoCaracterizacion"]),
+    est_iluminacion: pickLegacyCaracterizacionField(payload, ["est_iluminacion", "estIluminacion", "EstActual_Iluminacion"]),
+    est_ventilacion: pickLegacyCaracterizacionField(payload, ["est_ventilacion", "estVentilacion", "EstActual_Ventilacion"]),
+    est_paredes: pickLegacyCaracterizacionField(payload, ["est_paredes", "estParedes", "EstActual_Paredes"]),
+    est_pisos: pickLegacyCaracterizacionField(payload, ["est_pisos", "estPisos", "EstActual_Pisos"]),
+    est_techo: pickLegacyCaracterizacionField(payload, ["est_techo", "estTecho", "EstActual_Techo"]),
+    peso: pickLegacyCaracterizacionField(payload, ["peso"]),
+    talla: pickLegacyCaracterizacionField(payload, ["talla"]),
+    tension_sistolica: pickLegacyCaracterizacionField(payload, ["tension_sistolica", "tensionSistolica"]),
+    tension_diastolica: pickLegacyCaracterizacionField(payload, ["tension_diastolica", "tensionDiastolica"]),
+    perimetro_abdominal: pickLegacyCaracterizacionField(payload, ["perimetro_abdominal", "perimetroAbdominal"]),
+    perimetro_branquial: pickLegacyCaracterizacionField(payload, ["perimetro_branquial", "perimetroBranquial"]),
+    oximetria: pickLegacyCaracterizacionField(payload, ["oximetria"]),
+    temperatura: pickLegacyCaracterizacionField(payload, ["temperatura"]),
+    imc: pickLegacyCaracterizacionField(payload, ["imc"]),
+    clasificacion_imc: pickLegacyCaracterizacionField(payload, ["clasificacion_imc", "clasificacionImc"]),
+    o_izquierdo: pickLegacyCaracterizacionField(payload, ["o_izquierdo", "oIzquierdo", "Oizquierdo"]),
+    o_derecho: pickLegacyCaracterizacionField(payload, ["o_derecho", "oDerecho", "Oderecho"]),
+    evacunal: pickLegacyCaracterizacionField(payload, ["evacunal", "Evacunal"]),
+    serv_publicos: pickLegacyCaracterizacionField(payload, ["serv_publicos", "servPublicos", "seleccionadosServPublic"]),
+    factores_riesgo: pickLegacyCaracterizacionField(payload, ["factores_riesgo", "factoresRiesgo", "seleccionadosFactoresRiesgo"]),
+    presencia_animales: pickLegacyCaracterizacionField(payload, ["presencia_animales", "presenciaAnimales", "seleccionadosPresenciaAnimales"]),
+    antecedentes: pickLegacyCaracterizacionField(payload, ["antecedentes", "seleccionadosAntecedentes"]),
+    grupo_familiar: pickLegacyCaracterizacionField(payload, ["grupo_familiar", "grupoFamiliar"]),
+    riesgos: pickLegacyCaracterizacionField(payload, ["riesgos", "seleccionadosRiesgos"]),
+  };
+}
+
+function mergeCaracterizacionWithLegacy(row, legacyPayload) {
+  const overlay = buildLegacyCaracterizacionOverlay(legacyPayload);
+  const merged = { ...row };
+
+  Object.entries(overlay).forEach(([key, value]) => {
+    if (value === undefined) {
+      return;
+    }
+
+    if (isEmptyCaracterizacionValue(merged[key])) {
+      merged[key] = value;
+    }
+  });
+
+  return merged;
+}
+
+async function findLegacyCaracterizacionByEncuestaId(encuestaId) {
+  const legacyMap = await getRealtimeValue("caracterizacion");
+  if (!legacyMap || typeof legacyMap !== "object") {
+    return null;
+  }
+
+  for (const [legacyId, value] of Object.entries(legacyMap)) {
+    const payload = value && typeof value === "object" ? value : null;
+    if (!payload) {
+      continue;
+    }
+
+    const candidateEncuestaId = String(
+      payload.idEncuesta ?? payload.encuestaId ?? payload.encuesta_id ?? ""
+    ).trim();
+
+    if (candidateEncuestaId && candidateEncuestaId === String(encuestaId || "").trim()) {
+      return {
+        id: legacyId,
+        ...payload,
+      };
+    }
+  }
+
+  return null;
 }
 
 function resolvePayloadIpsId(payload) {
@@ -170,8 +283,15 @@ export async function getCaracterizacionByEncuestaId(encuestaId, actor = null) {
     ipsId: shouldRestrictByActorIps(actor) ? actorIpsId : null,
   });
 
-  if (!row) {
-    throw new AppError("Caracterizacion no encontrada", 404);
+  const legacyPayload = await findLegacyCaracterizacionByEncuestaId(encuestaId);
+
+  if (row) {
+    return legacyPayload ? mergeCaracterizacionWithLegacy(row, legacyPayload) : row;
   }
-  return row;
+
+  if (legacyPayload) {
+    return buildLegacyCaracterizacionOverlay(legacyPayload);
+  }
+
+  throw new AppError("Caracterizacion no encontrada", 404);
 }
