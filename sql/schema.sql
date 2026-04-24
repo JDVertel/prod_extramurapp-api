@@ -353,6 +353,10 @@ CREATE TABLE IF NOT EXISTS caracterizacion (
   antecedentes JSON NULL,
   grupo_familiar JSON NULL,
   riesgos JSON NULL,
+  detalle_sedentarismo DECIMAL(6,2) NULL,
+  detalle_consumo_alcohol VARCHAR(60) NULL,
+  detalle_consumo_cigarrillo DECIMAL(6,2) NULL,
+  detalle_alimentacion_poco_saludable VARCHAR(255) NULL,
 
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_caracterizacion_ips_id (ips_id),

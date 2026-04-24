@@ -55,6 +55,32 @@ function shouldRestrictByActorIps(actor) {
   return actor?.cargo !== "superusuario";
 }
 
+let caracterizacionDetailColumnsEnsured = false;
+
+async function ensureCaracterizacionDetailColumns(conn) {
+  if (caracterizacionDetailColumnsEnsured) {
+    return;
+  }
+
+  const required = [
+    { name: "detalle_sedentarismo", ddl: "DECIMAL(6,2) NULL" },
+    { name: "detalle_consumo_alcohol", ddl: "VARCHAR(60) NULL" },
+    { name: "detalle_consumo_cigarrillo", ddl: "DECIMAL(6,2) NULL" },
+    { name: "detalle_alimentacion_poco_saludable", ddl: "VARCHAR(255) NULL" },
+  ];
+
+  const [cols] = await conn.query("SHOW COLUMNS FROM caracterizacion");
+  const available = new Set((cols || []).map((col) => String(col.Field || "").trim()));
+
+  for (const column of required) {
+    if (!available.has(column.name)) {
+      await conn.query(`ALTER TABLE caracterizacion ADD COLUMN ${column.name} ${column.ddl}`);
+    }
+  }
+
+  caracterizacionDetailColumnsEnsured = true;
+}
+
 function resolveDeletedBy(actor = null) {
   return normalizeTextLen(
     actor?.id ?? actor?.uid ?? actor?.documento ?? actor?.numdoc ?? actor?.email,
@@ -160,6 +186,8 @@ function buildCaracterizacionInsertData(payload, encuestaRow, actor = null) {
     oximetria: "Oximetría",
     temperatura: "Temperatura",
     imc: "IMC",
+    detalle_sedentarismo: "Detalle de sedentarismo",
+    detalle_consumo_cigarrillo: "Detalle de consumo de cigarrillo",
   };
 
   Object.entries(decimalFields).forEach(([column, label]) => {
@@ -174,6 +202,7 @@ function buildCaracterizacionInsertData(payload, encuestaRow, actor = null) {
 }
 
 async function upsertCaracterizacion(conn, payload, encuestaRow, actor = null) {
+  await ensureCaracterizacionDetailColumns(conn);
   const insertData = buildCaracterizacionInsertData(payload, encuestaRow, actor);
   ensure(insertData.encuesta_id, "idEncuesta es obligatorio", 400);
 

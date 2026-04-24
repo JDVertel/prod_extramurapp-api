@@ -418,10 +418,16 @@ function buildCaracterizacionMap(rows = []) {
       Oizquierdo: row.o_izquierdo ?? row.Oizquierdo,
       Oderecho: row.o_derecho ?? row.Oderecho,
       Evacunal: row.evacunal ?? row.Evacunal,
+      servPublicos: row.serv_publicos ?? row.servPublicos,
       seleccionadosServPublic: row.serv_publicos ?? row.seleccionadosServPublic,
+      factoresRiesgo: row.factores_riesgo ?? row.factoresRiesgo,
       seleccionadosFactoresRiesgo: row.factores_riesgo ?? row.seleccionadosFactoresRiesgo,
+      presenciaAnimales: row.presencia_animales ?? row.presenciaAnimales,
       seleccionadosPresenciaAnimales: row.presencia_animales ?? row.seleccionadosPresenciaAnimales,
+      antecedentes: row.antecedentes ?? row.seleccionadosAntecedentes,
       seleccionadosAntecedentes: row.antecedentes ?? row.seleccionadosAntecedentes,
+      grupoFamiliar: row.grupo_familiar ?? row.grupoFamiliar,
+      riesgos: row.riesgos ?? row.seleccionadosRiesgos,
       seleccionadosRiesgos: row.riesgos ?? row.seleccionadosRiesgos,
     };
   });

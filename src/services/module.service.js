@@ -98,6 +98,13 @@ function buildLegacyCaracterizacionOverlay(payload = {}) {
     antecedentes: pickLegacyCaracterizacionField(payload, ["antecedentes", "seleccionadosAntecedentes"]),
     grupo_familiar: pickLegacyCaracterizacionField(payload, ["grupo_familiar", "grupoFamiliar"]),
     riesgos: pickLegacyCaracterizacionField(payload, ["riesgos", "seleccionadosRiesgos"]),
+    detalle_sedentarismo: pickLegacyCaracterizacionField(payload, ["detalle_sedentarismo", "detalleSedentarismo"]),
+    detalle_consumo_alcohol: pickLegacyCaracterizacionField(payload, ["detalle_consumo_alcohol", "detalleConsumoAlcohol"]),
+    detalle_consumo_cigarrillo: pickLegacyCaracterizacionField(payload, ["detalle_consumo_cigarrillo", "detalleConsumoCigarrillo"]),
+    detalle_alimentacion_poco_saludable: pickLegacyCaracterizacionField(
+      payload,
+      ["detalle_alimentacion_poco_saludable", "detalleAlimentacionPocoSaludable", "AlimentacionPocoSaludable"]
+    ),
   };
 }
 

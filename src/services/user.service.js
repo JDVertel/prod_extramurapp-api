@@ -160,6 +160,8 @@ const CARGOS_PROFESIONALES_NORMALIZADOS = new Set([
   "trabajadorsocial",
   "trabajadorasocial",
   "nutricionista",
+  "fact",
+  "facturacion",
 ]);
 
 function normalizeCargo(value) {
