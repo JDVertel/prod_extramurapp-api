@@ -194,7 +194,8 @@ function enforceIpsPayload(config, payload, actor) {
 
 export async function listModule(moduleName, query, actor = null) {
   const config = resolveModuleConfig(moduleName);
-  const limit = Math.min(Math.max(Number(query.limit || 100), 1), 500);
+  const maxLimit = 5000;
+  const limit = Math.min(Math.max(Number(query.limit || 100), 1), maxLimit);
   const offset = Math.max(Number(query.offset || 0), 0);
   const actorIpsId = resolveScopedIpsId(config, actor, { requireWhenRestricted: true });
   return listModuleRows(config, {
