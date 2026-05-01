@@ -19,6 +19,7 @@ function hasIpsColumn(config) {
 
 let ipsCodColumnCache;
 let ipsExistingColumnsCache;
+let ipsBrandingColumnsEnsured = false;
 const tableExistingColumnsCache = new Map();
 const tablePkAutoIncrementCache = new Map();
 const tablePkNumericCache = new Map();
@@ -158,6 +159,33 @@ async function resolveIpsCodColumn() {
 }
 
 async function resolveIpsExistingColumns() {
+  if (!ipsBrandingColumnsEnsured) {
+    try {
+      await pool.query("ALTER TABLE ips ADD COLUMN logo_url MEDIUMTEXT NULL");
+    } catch (error) {
+      if (error?.code !== "ER_DUP_FIELDNAME") {
+        console.warn("No se pudo agregar columna logo_url en ips", { message: error?.message, code: error?.code });
+      }
+    }
+
+    // Ensure existing installations support larger base64 logos.
+    try {
+      await pool.query("ALTER TABLE ips MODIFY COLUMN logo_url MEDIUMTEXT NULL");
+    } catch (error) {
+      console.warn("No se pudo ajustar tipo de columna logo_url en ips", { message: error?.message, code: error?.code });
+    }
+
+    try {
+      await pool.query("ALTER TABLE ips ADD COLUMN color_institucional VARCHAR(20) NULL");
+    } catch (error) {
+      if (error?.code !== "ER_DUP_FIELDNAME") {
+        console.warn("No se pudo agregar columna color_institucional en ips", { message: error?.message, code: error?.code });
+      }
+    }
+
+    ipsBrandingColumnsEnsured = true;
+  }
+
   if (ipsExistingColumnsCache) {
     return ipsExistingColumnsCache;
   }

@@ -74,7 +74,9 @@ CREATE TABLE IF NOT EXISTS ips (
   nit VARCHAR(60) NULL,
   cod_hab VARCHAR(80) NULL,
   dpto VARCHAR(120) NULL,
-  municipio VARCHAR(120) NULL
+  municipio VARCHAR(120) NULL,
+  logo_url MEDIUMTEXT NULL,
+  color_institucional VARCHAR(20) NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS cups (

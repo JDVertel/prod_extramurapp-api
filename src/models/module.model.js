@@ -249,10 +249,24 @@
   ips: {
     table: "ips",
     pk: "id",
-    columns: ["id", "nombre", "nit", "cod_hab", "dpto", "municipio"],
+    columns: ["id", "nombre", "nit", "cod_hab", "dpto", "municipio", "logo_url", "color_institucional"],
     aliases: {
       codHab: "cod_hab",
       cod_hab: "cod_hab",
+      logoUrl: "logo_url",
+      logo_url: "logo_url",
+      colorInstitucional: "color_institucional",
+      color_institucional: "color_institucional",
+    },
+    maxLengths: {
+      nombre: 190,
+      nit: 60,
+      cod_hab: 80,
+      dpto: 120,
+      municipio: 120,
+      // Allow larger data:image URLs without truncating.
+      logo_url: 1000000,
+      color_institucional: 20,
     },
   },
   cups: {
