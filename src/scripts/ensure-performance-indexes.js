@@ -65,9 +65,23 @@ async function run() {
   await addIndexIfMissing("encuestas", "idx_encuestas_tsocial_bandeja", "id_tsocial_atiende, status_gest_aux, status_gest_tsocial");
   await addIndexIfMissing("encuestas", "idx_encuestas_nutricionista_bandeja", "id_nutricionista_atiende, status_gest_aux, status_gest_nutricionista");
   await addIndexIfMissing("encuestas", "idx_encuestas_convenio_fecha", "convenio, fecha");
+  await addIndexIfMissing("encuestas", "idx_encuestas_numdoc_tipodoc", "numdoc, tipodoc");
+  await addIndexIfMissing("encuestas", "idx_encuestas_fact_aprov", "convenio, status_facturacion, asig_fact, fecha_gest_enfermera");
+  await addIndexIfMissing("encuestas", "idx_encuestas_facturador_pendientes", "asig_fact, status_facturacion, fecha_facturacion");
+  await addIndexIfMissing("encuestas", "idx_encuestas_fact_ips_fecha", "ips_id, status_facturacion, fecha_facturacion");
+  await addIndexIfMissing("encuestas", "idx_encuestas_fact_aux", "id_encuestador, status_facturacion, fecha_facturacion");
+  await addIndexIfMissing("encuestas", "idx_encuestas_fact_medico", "id_medico_atiende, status_facturacion, fecha_facturacion");
+  await addIndexIfMissing("encuestas", "idx_encuestas_fact_enfermero", "id_enfermero_atiende, status_facturacion, fecha_facturacion");
+  await addIndexIfMissing("encuestas", "idx_encuestas_fact_psicologo", "id_psicologo_atiende, status_facturacion, fecha_facturacion");
+  await addIndexIfMissing("encuestas", "idx_encuestas_fact_tsocial", "id_tsocial_atiende, status_facturacion, fecha_facturacion");
+  await addIndexIfMissing("encuestas", "idx_encuestas_fact_nutricionista", "id_nutricionista_atiende, status_facturacion, fecha_facturacion");
 
   await addIndexIfMissing("encuesta_actividades", "idx_encuesta_actividades_encuesta_ips", "encuesta_id, ips_id");
   await addIndexIfMissing("asignacion_cups", "idx_asignacion_cups_encuesta_actividad", "encuesta_id, actividad_id");
+  await addIndexIfMissing("asignacion_cups", "idx_asignacion_cups_encuesta_fact_key", "encuesta_id, facturado, key_ref");
+  await addIndexIfMissing("asignacion_cups", "idx_asignacion_cups_fact_prof", "fact_prof, facturado, encuesta_id");
+  await addIndexIfMissing("asignacion_cups", "idx_asignacion_cups_fact_estado", "encuesta_id, facturado, fact_num");
+  await addIndexIfMissing("asignacion_cups", "idx_asignacion_cups_key_fact", "key_ref, facturado, encuesta_id");
 
   await addForeignKeyIfMissing({
     tableName: "contrato_cups",

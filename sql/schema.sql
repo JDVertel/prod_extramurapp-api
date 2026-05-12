@@ -228,7 +228,17 @@ CREATE TABLE IF NOT EXISTS encuestas (
   INDEX idx_encuestas_psicologo_bandeja (id_psicologo_atiende, status_gest_aux, status_gest_psicologo),
   INDEX idx_encuestas_tsocial_bandeja (id_tsocial_atiende, status_gest_aux, status_gest_tsocial),
   INDEX idx_encuestas_nutricionista_bandeja (id_nutricionista_atiende, status_gest_aux, status_gest_nutricionista),
-  INDEX idx_encuestas_convenio_fecha (convenio, fecha)
+  INDEX idx_encuestas_convenio_fecha (convenio, fecha),
+  INDEX idx_encuestas_numdoc_tipodoc (numdoc, tipodoc),
+  INDEX idx_encuestas_fact_aprov (convenio, status_facturacion, asig_fact, fecha_gest_enfermera),
+  INDEX idx_encuestas_facturador_pendientes (asig_fact, status_facturacion, fecha_facturacion),
+  INDEX idx_encuestas_fact_ips_fecha (ips_id, status_facturacion, fecha_facturacion),
+  INDEX idx_encuestas_fact_aux (id_encuestador, status_facturacion, fecha_facturacion),
+  INDEX idx_encuestas_fact_medico (id_medico_atiende, status_facturacion, fecha_facturacion),
+  INDEX idx_encuestas_fact_enfermero (id_enfermero_atiende, status_facturacion, fecha_facturacion),
+  INDEX idx_encuestas_fact_psicologo (id_psicologo_atiende, status_facturacion, fecha_facturacion),
+  INDEX idx_encuestas_fact_tsocial (id_tsocial_atiende, status_facturacion, fecha_facturacion),
+  INDEX idx_encuestas_fact_nutricionista (id_nutricionista_atiende, status_facturacion, fecha_facturacion)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================
@@ -286,6 +296,10 @@ CREATE TABLE IF NOT EXISTS asignacion_cups (
   INDEX idx_asignacion_cups_actividad (actividad_id),
   INDEX idx_asignacion_cups_cups (cups_id),
   INDEX idx_asignacion_cups_encuesta_actividad (encuesta_id, actividad_id),
+  INDEX idx_asignacion_cups_encuesta_fact_key (encuesta_id, facturado, key_ref),
+  INDEX idx_asignacion_cups_fact_prof (fact_prof, facturado, encuesta_id),
+  INDEX idx_asignacion_cups_fact_estado (encuesta_id, facturado, fact_num),
+  INDEX idx_asignacion_cups_key_fact (key_ref, facturado, encuesta_id),
   UNIQUE KEY uq_asignacion_cups (encuesta_id, cups_id, actividad_id),
   CONSTRAINT fk_asignacion_cups_encuesta FOREIGN KEY (encuesta_id) REFERENCES encuestas(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

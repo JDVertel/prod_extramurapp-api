@@ -28,6 +28,7 @@ export async function requireAuth(req, res, next) {
       id: dbUser.id,
       sub: dbUser.id,
       cargo: dbUser.cargo,
+      nombre: dbUser.nombre,
       convenio: dbUser.convenio,
       ipsId: dbUser.ips_id,
       numDocumento: dbUser.num_documento,
