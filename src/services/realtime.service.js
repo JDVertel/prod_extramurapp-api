@@ -900,7 +900,7 @@ export async function getRealtimeValue(inputPath, actor = null, query = {}) {
 
   if (root === "actividades") {
     if (!id) {
-      const rows = await listModule("encuesta_actividades", { limit: 10000, offset: 0 }, actor);
+      const rows = await listModule("encuesta_actividades", { limit: query?.limit ?? 5000, offset: query?.offset ?? 0 }, actor);
       return buildActividadesMap(rows);
     }
 

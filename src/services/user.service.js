@@ -125,7 +125,7 @@ function isFacturadorCargo(cargo) {
 
 function resolveAccesosProfesionales(cargo, accesos) {
   if (isFacturadorCargo(cargo)) {
-    return [];
+    return normalizeAccesosProfesionales([]);
   }
   return normalizeAccesosProfesionales(accesos);
 }
@@ -301,6 +301,7 @@ export async function bulkCreateUsersFromCsv(filePath, actor = null) {
   }
   return bulkCreateUsers(data, actor);
 }
+import { invalidateAuthUserCache } from "../middleware/auth.js";
 import { randomUUID } from "node:crypto";
 import { ensure, AppError } from "../utils/app-error.js";
 import { hashPassword } from "../utils/auth.js";
@@ -572,7 +573,7 @@ export async function updateUserRecord(id, payload, actor = null) {
     activo: typeof payload.activo === "boolean" ? (payload.activo ? 1 : 0) : undefined,
     bandejas: payload.bandejas !== undefined ? normalizeBandejas(payload.bandejas) : undefined,
     accesos_profesionales: isFacturadorCargo(targetCargo)
-      ? []
+      ? normalizeAccesosProfesionales([])
       : (payload.accesosProfesionales !== undefined
           ? resolveAccesosProfesionales(targetCargo, payload.accesosProfesionales)
           : undefined),
@@ -581,6 +582,8 @@ export async function updateUserRecord(id, payload, actor = null) {
   if (!affected) {
     throw new AppError("Usuario no encontrado", 404);
   }
+
+  invalidateAuthUserCache(id);
 
   const updated = shouldRestrictByActorIps(actor) && actorIpsId
     ? await findUserByIdAndIps(id, actorIpsId)
@@ -606,6 +609,7 @@ export async function deleteUserRecord(id, actor = null) {
   if (!affected) {
     throw new AppError("Usuario no encontrado", 404);
   }
+  invalidateAuthUserCache(id);
   return { message: "Usuario eliminado" };
 }
 

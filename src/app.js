@@ -1,3 +1,4 @@
+import compression from "compression";
 import cors from "cors";
 import express from "express";
 import helmet from "helmet";
@@ -20,6 +21,8 @@ export function createApp() {
       crossOriginResourcePolicy: { policy: "cross-origin" },
     })
   );
+
+  app.use(compression());
 
   const allowedOrigins = new Set(config.corsOrigins);
   app.use(

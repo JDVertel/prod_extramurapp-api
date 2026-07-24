@@ -1151,6 +1151,7 @@ export async function listModuleRows(config, { limit = 100, offset = 0, ipsId = 
       ["id_nutricionista_atiende", ["idNutricionistaAtiende", "idNutriAtiende", "idNutricionista", "idNutricionAtiende", "id_nutricionista_atiende"]],
       ["id_higienista_oral_atiende", ["idHigienistaOralAtiende", "id_higienista_oral_atiende"]],
       ["convenio", ["convenio"]],
+      ["asig_fact", ["asig_fact", "asigfact", "asigFact"]],
     ];
 
     likeTextFilters.forEach(([columnName, aliases]) => {
