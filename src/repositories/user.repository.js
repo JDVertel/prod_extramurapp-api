@@ -12,7 +12,7 @@ export async function findUserIdByDocument(numDocumento) {
 
 export async function findUserForLogin(email) {
   const [rows] = await pool.query(
-    `SELECT id, email, password_hash, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password,
+    `SELECT id, email, password_hash, nombre, cargo, ips_id, convenio, grupo, num_documento, telefono, fecha_fin_contrato, activo, bandejas, accesos_profesionales, must_change_password,
             failed_login_attempts, lock_level, locked_until, is_locked
      FROM users
      WHERE email = ?
@@ -24,7 +24,7 @@ export async function findUserForLogin(email) {
 
 export async function findUserById(id) {
   const [rows] = await pool.query(
-    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password,
+    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, telefono, fecha_fin_contrato, activo, bandejas, accesos_profesionales, must_change_password,
             failed_login_attempts, lock_level, locked_until, is_locked, created_at, updated_at
      FROM users
      WHERE id = ?
@@ -48,7 +48,7 @@ export async function findUserCredentialsById(id) {
 
 export async function listUsers() {
   const [rows] = await pool.query(
-    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password,
+    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, telefono, fecha_fin_contrato, activo, bandejas, accesos_profesionales, must_change_password,
             failed_login_attempts, lock_level, locked_until, is_locked, created_at, updated_at
      FROM users
      ORDER BY nombre ASC`
@@ -62,7 +62,7 @@ export async function listUsersByIpsId(ipsId) {
   }
 
   const [rows] = await pool.query(
-    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password,
+    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, telefono, fecha_fin_contrato, activo, bandejas, accesos_profesionales, must_change_password,
             failed_login_attempts, lock_level, locked_until, is_locked, created_at, updated_at
      FROM users
      WHERE ips_id = ?
@@ -79,7 +79,7 @@ export async function findUserByIdAndIps(id, ipsId) {
   }
 
   const [rows] = await pool.query(
-    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, activo, bandejas, accesos_profesionales, must_change_password,
+    `SELECT id, email, nombre, cargo, ips_id, convenio, grupo, num_documento, telefono, fecha_fin_contrato, activo, bandejas, accesos_profesionales, must_change_password,
             failed_login_attempts, lock_level, locked_until, is_locked, created_at, updated_at
      FROM users
      WHERE id = ? AND ips_id = ?
@@ -91,7 +91,23 @@ export async function findUserByIdAndIps(id, ipsId) {
 }
 
 export async function createUser(user) {
-  const columns = ["id", "email", "password_hash", "nombre", "cargo", "ips_id", "convenio", "grupo", "num_documento", "activo", "bandejas", "accesos_profesionales", "must_change_password"];
+  const columns = [
+    "id",
+    "email",
+    "password_hash",
+    "nombre",
+    "cargo",
+    "ips_id",
+    "convenio",
+    "grupo",
+    "num_documento",
+    "telefono",
+    "fecha_fin_contrato",
+    "activo",
+    "bandejas",
+    "accesos_profesionales",
+    "must_change_password",
+  ];
   const values = [
     user.id,
     user.email,
@@ -102,6 +118,8 @@ export async function createUser(user) {
     user.convenio,
     user.grupo,
     user.numDocumento,
+    user.telefono ?? null,
+    user.fechaFinContrato ?? null,
     user.activo,
     user.bandejas,
     user.accesosProfesionales,

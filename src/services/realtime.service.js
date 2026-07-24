@@ -317,8 +317,14 @@ function buildEncuestasMap(rows = []) {
       idPsicologoAtiende: row.id_psicologo_atiende ?? row.idPsicologoAtiende,
       idTsocialAtiende: row.id_tsocial_atiende ?? row.idTsocialAtiende,
       idNutricionistaAtiende: row.id_nutricionista_atiende ?? row.idNutricionistaAtiende ?? row.idNutriAtiende,
+      idHigienistaOralAtiende: row.id_higienista_oral_atiende ?? row.idHigienistaOralAtiende,
       idEncuesta: row.id_encuesta ?? row.idEncuesta,
       fechaNac: row.fecha_nac ?? row.fechaNac,
+      departamentoNacimiento: row.departamento_nacimiento ?? row.departamentoNacimiento,
+      municipioNacimiento: row.municipio_nacimiento ?? row.municipioNacimiento,
+      identidadGenero: row.identidad_genero ?? row.identidadGenero,
+      ocupacion: row.ocupacion,
+      nivelOcupacion: row.nivel_ocupacion ?? row.nivelOcupacion,
       barrioVeredacomuna: barrioVeredaComuna,
       poblacionRiesgo: parsePoblacionRiesgo(row.poblacion_riesgo ?? row.poblacionRiesgo),
       requiereRemision: row.requiere_remision ?? row.requiereRemision,
@@ -328,6 +334,7 @@ function buildEncuestasMap(rows = []) {
       fechagestPsicologo: serializeDateTimeOutput(row.fecha_gest_psicologo ?? row.fechagestPsicologo),
       fechagestTsocial: serializeDateTimeOutput(row.fecha_gest_tsocial ?? row.fechagestTsocial),
       fechagestNutricionista: serializeDateTimeOutput(row.fecha_gest_nutricionista ?? row.fechagestNutricionista),
+      fechagestHigienistaOral: serializeDateTimeOutput(row.fecha_gest_higienista_oral ?? row.fechagestHigienistaOral),
       fechagestAuxiliar: serializeDateTimeOutput(row.fecha_gest_auxiliar ?? row.fechagestAuxiliar),
       FechaFacturacion: serializeDateTimeOutput(row.fecha_facturacion ?? row.fechaFacturacion ?? row.FechaFacturacion),
       fechaFacturacion: serializeDateTimeOutput(row.fecha_facturacion ?? row.fechaFacturacion ?? row.FechaFacturacion),
@@ -338,12 +345,14 @@ function buildEncuestasMap(rows = []) {
       status_gest_psicologo: toBooleanStatus(row.status_gest_psicologo),
       status_gest_tsocial: toBooleanStatus(row.status_gest_tsocial),
       status_gest_nutricionista: toBooleanStatus(row.status_gest_nutricionista ?? row.status_gest_nutri),
+      status_gest_higienista_oral: toBooleanStatus(row.status_gest_higienista_oral),
       status_gest_aux_valor: normalizeStatusGestionLevel(row.status_gest_aux),
       status_gest_medica_valor: normalizeStatusGestionLevel(row.status_gest_medica),
       status_gest_enfermera_valor: normalizeStatusGestionLevel(row.status_gest_enfermera),
       status_gest_psicologo_valor: normalizeStatusGestionLevel(row.status_gest_psicologo),
       status_gest_tsocial_valor: normalizeStatusGestionLevel(row.status_gest_tsocial),
       status_gest_nutricionista_valor: normalizeStatusGestionLevel(row.status_gest_nutricionista ?? row.status_gest_nutri),
+      status_gest_higienista_oral_valor: normalizeStatusGestionLevel(row.status_gest_higienista_oral),
       status_visita: toBooleanStatus(row.status_visita),
       status_caracterizacion: toBooleanStatus(row.status_caracterizacion),
       status_facturacion: toBooleanStatus(row.status_facturacion),
@@ -655,6 +664,8 @@ function fromApiUser(row = {}) {
     estado: row.activo ?? row.estado ?? true,
     grupo: row.grupo ?? "",
     convenio: row.convenio ?? null,
+    telefono: row.telefono ?? null,
+    fechaFinContrato: row.fechaFinContrato ?? row.fecha_fin_contrato ?? null,
   };
 }
 
@@ -664,7 +675,7 @@ function toApiUser(payload = {}) {
     ? estado
     : !["false", "0", "inactivo", "inactive"].includes(String(estado ?? "").trim().toLowerCase());
 
-  return {
+  const out = {
     nombre: payload.nombre ?? payload.nombres ?? "",
     numDocumento: payload.numDocumento ?? payload.documento ?? null,
     email: payload.email ?? "",
@@ -673,8 +684,21 @@ function toApiUser(payload = {}) {
     password: payload.password,
     grupo: payload.grupo ?? "",
     convenio: payload.convenio ?? null,
+    telefono: payload.telefono ?? null,
     activo,
   };
+
+  if (Object.prototype.hasOwnProperty.call(payload, "fechaFinContrato")
+    || Object.prototype.hasOwnProperty.call(payload, "fecha_fin_contrato")) {
+    out.fechaFinContrato = payload.fechaFinContrato ?? payload.fecha_fin_contrato ?? null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(payload, "accesosProfesionales")
+    || Object.prototype.hasOwnProperty.call(payload, "accesos_profesionales")) {
+    out.accesosProfesionales = payload.accesosProfesionales ?? payload.accesos_profesionales ?? [];
+  }
+
+  return out;
 }
 
 function buildUsersMap(rows = []) {
@@ -697,6 +721,7 @@ function toApiEncuesta(payload = {}) {
     idPsicologoAtiende: payload.idPsicologoAtiende ?? payload.id_psicologo_atiende,
     idTsocialAtiende: payload.idTsocialAtiende ?? payload.id_tsocial_atiende,
     idNutricionistaAtiende: payload.idNutricionistaAtiende ?? payload.idNutriAtiende ?? payload.id_nutricionista_atiende,
+    idHigienistaOralAtiende: payload.idHigienistaOralAtiende ?? payload.id_higienista_oral_atiende,
     convenio: payload.convenio,
     eps: payload.eps,
     regimen: payload.regimen,
@@ -710,6 +735,11 @@ function toApiEncuesta(payload = {}) {
     numdoc: payload.numdoc,
     sexo: payload.sexo,
     fechaNac: normalizeDateValue(payload.fechaNac ?? payload.fecha_nac),
+    departamentoNacimiento: payload.departamentoNacimiento ?? payload.departamento_nacimiento,
+    municipioNacimiento: payload.municipioNacimiento ?? payload.municipio_nacimiento,
+    identidadGenero: payload.identidadGenero ?? payload.identidad_genero,
+    ocupacion: payload.ocupacion,
+    nivelOcupacion: payload.nivelOcupacion ?? payload.nivel_ocupacion,
     direccion: payload.direccion,
     telefono: payload.telefono,
     barrioVeredacomuna: serializeBarrioVeredaComuna(payload.barrioVeredacomuna ?? payload.barrio_vereda_comuna),
@@ -724,6 +754,7 @@ function toApiEncuesta(payload = {}) {
     status_gest_psicologo: toStatusGestValue(payload.status_gest_psicologo),
     status_gest_tsocial: toStatusGestValue(payload.status_gest_tsocial),
     status_gest_nutricionista: toStatusGestValue(payload.status_gest_nutricionista ?? payload.status_gest_nutri),
+    status_gest_higienista_oral: toStatusGestValue(payload.status_gest_higienista_oral),
     status_visita: toBit(payload.status_visita),
     status_caracterizacion: toBit(payload.status_caracterizacion),
     status_facturacion: toBit(payload.status_facturacion),
@@ -732,6 +763,7 @@ function toApiEncuesta(payload = {}) {
     fechagestPsicologo: normalizeDateTimeValue(payload.fechagestPsicologo ?? payload.fecha_gest_psicologo),
     fechagestTsocial: normalizeDateTimeValue(payload.fechagestTsocial ?? payload.fecha_gest_tsocial),
     fechagestNutricionista: normalizeDateTimeValue(payload.fechagestNutricionista ?? payload.fecha_gest_nutricionista),
+    fechagestHigienistaOral: normalizeDateTimeValue(payload.fechagestHigienistaOral ?? payload.fecha_gest_higienista_oral),
     fechagestAuxiliar: normalizeDateTimeValue(payload.fechagestAuxiliar ?? payload.fecha_gest_auxiliar),
     fechaFacturacion: normalizeDateTimeValue(payload.fechaFacturacion ?? payload.FechaFacturacion ?? payload.fecha_facturacion),
     asig_fact: payload.asig_fact ?? payload.asigfact,

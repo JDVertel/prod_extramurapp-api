@@ -1,9 +1,21 @@
 import dotenv from "dotenv";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+const rootDir = path.resolve(__dirname, "../..");
+
+function loadEnvFile(filename) {
+  const filePath = path.join(rootDir, filename);
+  if (fs.existsSync(filePath)) {
+    dotenv.config({ path: filePath });
+  }
+}
+
+// Variables ya definidas en el sistema (PM2, Docker, etc.) no se sobrescriben.
+loadEnvFile(".env");
+loadEnvFile(".env.local");
 
 function normalizeOrigins(value) {
   const raw = String(value || "").trim();
@@ -38,3 +50,16 @@ export const config = {
   showResetTokenInResponse:
     String(process.env.SHOW_RESET_TOKEN_IN_RESPONSE || "false").toLowerCase() === "true",
 };
+
+export const isProduction = config.nodeEnv === "production";
+
+export function logStartupConfig() {
+  const { mysql } = config;
+  console.log(
+    `[${config.nodeEnv}] MySQL ${mysql.user}@${mysql.host}:${mysql.port}/${mysql.database}`
+  );
+
+  if (isProduction && (config.jwtSecret === "change-me" || /dev/i.test(config.jwtSecret))) {
+    console.warn("ADVERTENCIA: JWT_SECRET inseguro en producción. Actualiza el .env del servidor.");
+  }
+}

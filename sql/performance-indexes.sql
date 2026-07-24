@@ -36,6 +36,9 @@ END$$
 DELIMITER ;
 
 CALL add_index_if_missing('encuestas', 'idx_encuestas_numdoc_tipodoc', '`numdoc`, `tipodoc`');
+CALL add_index_if_missing('encuestas', 'idx_encuestas_fecha', '`fecha`');
+CALL add_index_if_missing('encuestas', 'idx_encuestas_ips_fecha', '`ips_id`, `fecha`');
+CALL add_index_if_missing('encuestas', 'idx_encuestas_ips_created_at', '`ips_id`, `created_at`');
 CALL add_index_if_missing('encuestas', 'idx_encuestas_fact_aprov', '`convenio`, `status_facturacion`, `asig_fact`, `fecha_gest_enfermera`');
 CALL add_index_if_missing('encuestas', 'idx_encuestas_facturador_pendientes', '`asig_fact`, `status_facturacion`, `fecha_facturacion`');
 CALL add_index_if_missing('encuestas', 'idx_encuestas_fact_ips_fecha', '`ips_id`, `status_facturacion`, `fecha_facturacion`');
@@ -45,10 +48,14 @@ CALL add_index_if_missing('encuestas', 'idx_encuestas_fact_enfermero', '`id_enfe
 CALL add_index_if_missing('encuestas', 'idx_encuestas_fact_psicologo', '`id_psicologo_atiende`, `status_facturacion`, `fecha_facturacion`');
 CALL add_index_if_missing('encuestas', 'idx_encuestas_fact_tsocial', '`id_tsocial_atiende`, `status_facturacion`, `fecha_facturacion`');
 CALL add_index_if_missing('encuestas', 'idx_encuestas_fact_nutricionista', '`id_nutricionista_atiende`, `status_facturacion`, `fecha_facturacion`');
+CALL add_index_if_missing('encuestas', 'idx_encuestas_fact_higienista_oral', '`id_higienista_oral_atiende`, `status_facturacion`, `fecha_facturacion`');
 
 CALL add_index_if_missing('asignacion_cups', 'idx_asignacion_cups_encuesta_fact_key', '`encuesta_id`, `facturado`, `key_ref`');
 CALL add_index_if_missing('asignacion_cups', 'idx_asignacion_cups_fact_prof', '`fact_prof`, `facturado`, `encuesta_id`');
 CALL add_index_if_missing('asignacion_cups', 'idx_asignacion_cups_fact_estado', '`encuesta_id`, `facturado`, `fact_num`');
 CALL add_index_if_missing('asignacion_cups', 'idx_asignacion_cups_key_fact', '`key_ref`, `facturado`, `encuesta_id`');
+
+CALL add_index_if_missing('users', 'idx_users_fecha_fin_contrato', '`fecha_fin_contrato`');
+CALL add_index_if_missing('caracterizacion', 'idx_caracterizacion_encuesta_id', '`encuesta_id`');
 
 DROP PROCEDURE IF EXISTS add_index_if_missing;

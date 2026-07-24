@@ -29,6 +29,66 @@ function toDate(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function normalizeCargoLogin(cargo) {
+  return String(cargo || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function esCargoExentoContrato(cargo) {
+  const normalized = normalizeCargoLogin(cargo);
+  return (
+    normalized === "admin" ||
+    normalized === "administrador" ||
+    normalized === "superusuario"
+  );
+}
+
+function toDateOnlyIso(value) {
+  if (!value) return null;
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) {
+    return text.slice(0, 10);
+  }
+  const parsed = toDate(value);
+  if (!parsed) return null;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function getTodayDateOnlyIso() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function assertContratoVigente(user) {
+  if (esCargoExentoContrato(user?.cargo)) {
+    return;
+  }
+
+  const fechaFin = toDateOnlyIso(user?.fecha_fin_contrato ?? user?.fechaFinContrato);
+  if (!fechaFin) {
+    // Usuarios sin fecha cargada no se bloquean (datos legacy).
+    return;
+  }
+
+  const hoy = getTodayDateOnlyIso();
+  if (fechaFin < hoy) {
+    throw new AppError(
+      "No puede ingresar: su contrato ya finalizó. Contacte al administrador para renovar o actualizar la fecha de finalización.",
+      403,
+      {
+        contractExpired: true,
+        fechaFinContrato: fechaFin,
+      }
+    );
+  }
+}
+
 function normalizeIpsId(value) {
   const normalized = String(value ?? "").trim();
   return normalized || null;
@@ -78,6 +138,7 @@ export async function login(payload) {
   const user = await findUserForLogin(email);
   ensure(user, "Credenciales invalidas", 401);
   ensure(user.activo, "Usuario inactivo", 403);
+  assertContratoVigente(user);
 
   const now = new Date();
   const lockLevel = Number(user.lock_level || 0);

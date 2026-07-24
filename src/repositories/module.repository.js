@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { pool } from "../utils/database.js";
 import { getRealtimeValue } from "../services/realtime-store.service.js";
+import { AppError } from "../utils/app-error.js";
 import {
   MODULES,
   normalizeModulePayload,
@@ -302,6 +303,71 @@ function getFirstFilterValue(filters = {}, keys = []) {
   return null;
 }
 
+/** Detecta comodines SQL LIKE: % (varios chars) y _ (un char). */
+function hasSqlLikeWildcards(value) {
+  return /[%_]/.test(String(value || ""));
+}
+
+function normalizeDocSeparators(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.\-]/g, "");
+}
+
+/**
+ * Condición de texto:
+ * - allowLike + wildcards explícitos → LIKE tal cual
+ * - allowLike + implicitContains → LIKE %texto%
+ * - normalizeDoc (exacto) → igualdad con/sin separadores
+ * - default → igualdad TRIM
+ * @returns {{ sql: string, params: string[] } | null}
+ */
+function buildTextMatchClause(columnName, filterValue, {
+  allowLike = false,
+  normalizeDoc = false,
+  implicitContains = false,
+} = {}) {
+  const value = normalizeTextLen(filterValue, 120);
+  if (!value) {
+    return null;
+  }
+
+  if (allowLike && hasSqlLikeWildcards(value)) {
+    return {
+      sql: `TRIM(${columnName}) LIKE ?`,
+      params: [value],
+    };
+  }
+
+  if (allowLike && implicitContains) {
+    const compact = normalizeDoc ? normalizeDocSeparators(value) : "";
+    if (normalizeDoc && compact && compact !== value.toLowerCase()) {
+      return {
+        sql: `(TRIM(${columnName}) LIKE ? OR LOWER(REPLACE(REPLACE(REPLACE(TRIM(${columnName}), '.', ''), '-', ''), ' ', '')) LIKE ?)`,
+        params: [`%${value}%`, `%${compact}%`],
+      };
+    }
+    return {
+      sql: `TRIM(${columnName}) LIKE ?`,
+      params: [`%${value}%`],
+    };
+  }
+
+  if (normalizeDoc) {
+    const compact = normalizeDocSeparators(value);
+    return {
+      sql: `(TRIM(${columnName}) = ? OR LOWER(REPLACE(REPLACE(REPLACE(TRIM(${columnName}), '.', ''), '-', ''), ' ', '')) = ?)`,
+      params: [value, compact || value],
+    };
+  }
+
+  return {
+    sql: `TRIM(${columnName}) = ?`,
+    params: [value],
+  };
+}
+
 function resolveDeletedBy(actor = null) {
   return normalizeTextLen(
     actor?.id ?? actor?.uid ?? actor?.documento ?? actor?.numdoc ?? actor?.email,
@@ -576,6 +642,17 @@ async function resolveValidEpsId(epsId) {
   );
 
   return rows.length ? epsId : null;
+}
+
+async function resolveEpsNombre(epsId, fallbackNombre = "") {
+  const fallback = String(fallbackNombre || "").trim();
+  if (!epsId) return fallback;
+  const [rows] = await pool.query(
+    `SELECT eps FROM eps WHERE id = ? LIMIT 1`,
+    [epsId]
+  );
+  const nombre = String(rows?.[0]?.eps || "").trim();
+  return nombre || fallback;
 }
 
 function normalizeContratoCup(cup = {}, fallbackEpsId = null, fallbackEpsNombre = "", fallbackIpsId = null) {
@@ -870,8 +947,12 @@ async function findContratoById(config, id, { ipsId = null } = {}) {
 
 async function upsertContrato(config, payload, id = null, { ipsId = null } = {}) {
   const normalized = normalizeContratoPayload(payload, id);
-  if (!normalized.id || !normalized.eps_nombre) {
-    return { status: "empty-payload", row: null };
+
+  if (!normalized.id) {
+    throw new AppError(
+      "No se puede guardar el contrato: no se recibió un identificador válido.",
+      400
+    );
   }
 
   if (ipsId) {
@@ -879,22 +960,73 @@ async function upsertContrato(config, payload, id = null, { ipsId = null } = {})
   }
 
   // Evita 500 por FK cuando el id de EPS legado ya no existe en tabla eps.
+  const epsIdOriginal = normalized.eps_id;
   normalized.eps_id = await resolveValidEpsId(normalized.eps_id);
+  if (epsIdOriginal && !normalized.eps_id) {
+    throw new AppError(
+      "No se puede guardar el contrato: la EPS seleccionada no existe o fue eliminada. Elija una EPS válida del listado.",
+      400,
+      { epsId: epsIdOriginal }
+    );
+  }
 
-  await pool.query(
-    `INSERT INTO contratos (id, ips_id, eps_id, eps_nombre, fecha_creacion)
-     VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
-     ON DUPLICATE KEY UPDATE
-       ips_id = VALUES(ips_id),
-       eps_id = VALUES(eps_id),
-       eps_nombre = VALUES(eps_nombre),
-       fecha_creacion = COALESCE(VALUES(fecha_creacion), fecha_creacion)`,
-    [normalized.id, normalized.ips_id, normalized.eps_id, normalized.eps_nombre, normalized.fecha_creacion]
-  );
+  normalized.eps_nombre = await resolveEpsNombre(normalized.eps_id, normalized.eps_nombre);
+  if (!normalized.eps_nombre) {
+    throw new AppError(
+      "No se puede guardar el contrato: falta el nombre de la EPS. Seleccione nuevamente la EPS e intente guardar.",
+      400
+    );
+  }
 
-  await saveContratoCups(normalized.id, normalized.cups, normalized);
+  const cupsEntrada = Array.isArray(normalized.cups) ? normalized.cups : [];
+  const cupsValidos = cupsEntrada.filter((cup) => {
+    const cupsId = String(cup?.cupsId ?? cup?.id ?? "").trim();
+    const cupsNombre = String(cup?.cupsNombre ?? cup?.DescripcionCUP ?? "").trim();
+    return Boolean(cupsId && cupsNombre);
+  });
+  const omitidos = cupsEntrada.length - cupsValidos.length;
 
-  return { status: "updated", row: await findContratoById(config, normalized.id, { ipsId }) };
+  if (!cupsValidos.length) {
+    throw new AppError(
+      "No se puede guardar el contrato: debe incluir al menos un CUPS válido (con id y nombre).",
+      400,
+      omitidos > 0 ? `Se omitieron ${omitidos} CUPS incompletos.` : null
+    );
+  }
+
+  normalized.cups = cupsValidos;
+
+  try {
+    await pool.query(
+      `INSERT INTO contratos (id, ips_id, eps_id, eps_nombre, fecha_creacion)
+       VALUES (?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+       ON DUPLICATE KEY UPDATE
+         ips_id = VALUES(ips_id),
+         eps_id = VALUES(eps_id),
+         eps_nombre = VALUES(eps_nombre),
+         fecha_creacion = COALESCE(VALUES(fecha_creacion), fecha_creacion)`,
+      [normalized.id, normalized.ips_id, normalized.eps_id, normalized.eps_nombre, normalized.fecha_creacion]
+    );
+
+    await saveContratoCups(normalized.id, normalized.cups, normalized);
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    const sqlMessage = String(error?.sqlMessage || error?.message || "");
+    if (error?.code === "ER_DUP_ENTRY") {
+      throw new AppError(
+        "No se puede guardar el contrato: hay CUPS duplicados para la misma actividad. Elimine duplicados e intente de nuevo.",
+        409,
+        sqlMessage
+      );
+    }
+    throw error;
+  }
+
+  const row = await findContratoById(config, normalized.id, { ipsId });
+  if (omitidos > 0 && row && typeof row === "object") {
+    row._aviso = `Se omitieron ${omitidos} CUPS incompletos al guardar.`;
+  }
+  return { status: "updated", row };
 }
 
 async function listAsignacionesRows(config, { limit = 100, offset = 0, ipsId = null } = {}) {
@@ -1003,27 +1135,56 @@ export async function listModuleRows(config, { limit = 100, offset = 0, ipsId = 
       params.push(ipsId);
     }
 
+    // numdoc admite comodines LIKE (% y _). El resto permanece por igualdad exacta.
+    const likeTextFilters = [
+      ["numdoc", ["numdoc"]],
+    ];
+
     const exactTextFilters = [
       ["id", ["id"]],
       ["tipodoc", ["tipodoc"]],
-      ["numdoc", ["numdoc"]],
       ["id_encuestador", ["idEncuestador", "id_encuestador"]],
       ["id_medico_atiende", ["idMedicoAtiende", "id_medico_atiende"]],
       ["id_enfermero_atiende", ["idEnfermeroAtiende", "id_enfermero_atiende"]],
       ["id_psicologo_atiende", ["idPsicologoAtiende", "id_psicologo_atiende"]],
       ["id_tsocial_atiende", ["idTsocialAtiende", "id_tsocial_atiende"]],
       ["id_nutricionista_atiende", ["idNutricionistaAtiende", "idNutriAtiende", "idNutricionista", "idNutricionAtiende", "id_nutricionista_atiende"]],
+      ["id_higienista_oral_atiende", ["idHigienistaOralAtiende", "id_higienista_oral_atiende"]],
       ["convenio", ["convenio"]],
     ];
 
-    exactTextFilters.forEach(([columnName, aliases]) => {
-      const filterValue = normalizeTextLen(getFirstFilterValue(filters, aliases), 120);
-      if (!filterValue) {
+    likeTextFilters.forEach(([columnName, aliases]) => {
+      const rawFilter = getFirstFilterValue(filters, aliases);
+      const containsFlag = String(
+        getFirstFilterValue(filters, ["numdocContains", "numdoc_contains", "parcial"]) || ""
+      )
+        .trim()
+        .toLowerCase();
+      const wantsContains =
+        ["1", "true", "si", "sí", "yes"].includes(containsFlag) ||
+        hasSqlLikeWildcards(String(rawFilter || ""));
+
+      const clause = buildTextMatchClause(columnName, rawFilter, {
+        allowLike: true,
+        normalizeDoc: columnName === "numdoc",
+        implicitContains: columnName === "numdoc" && wantsContains,
+      });
+      if (!clause) {
         return;
       }
+      whereParts.push(clause.sql);
+      params.push(...clause.params);
+    });
 
-      whereParts.push(`${columnName} = ?`);
-      params.push(filterValue);
+    exactTextFilters.forEach(([columnName, aliases]) => {
+      const clause = buildTextMatchClause(columnName, getFirstFilterValue(filters, aliases), {
+        allowLike: false,
+      });
+      if (!clause) {
+        return;
+      }
+      whereParts.push(clause.sql);
+      params.push(...clause.params);
     });
 
     const booleanFilters = [
@@ -1033,6 +1194,7 @@ export async function listModuleRows(config, { limit = 100, offset = 0, ipsId = 
       ["status_gest_psicologo", ["status_gest_psicologo"]],
       ["status_gest_tsocial", ["status_gest_tsocial"]],
       ["status_gest_nutricionista", ["status_gest_nutricionista", "status_gest_nutri"]],
+      ["status_gest_higienista_oral", ["status_gest_higienista_oral"]],
       ["status_visita", ["status_visita"]],
       ["status_caracterizacion", ["status_caracterizacion"]],
       ["status_facturacion", ["status_facturacion"]],

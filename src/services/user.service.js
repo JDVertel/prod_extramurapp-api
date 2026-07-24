@@ -38,16 +38,118 @@ function getBulkValue(row, keys) {
   return '';
 }
 
+function normalizeTelefono(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const text = String(value).trim();
+  return text || null;
+}
+
+function normalizeFechaFinContrato(value) {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const yyyy = value.getFullYear();
+    const mm = String(value.getMonth() + 1).padStart(2, "0");
+    const dd = String(value.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  const text = String(value).trim();
+  if (!text) return null;
+
+  // Acepta YYYY-MM-DD o DD/MM/YYYY
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return text;
+  }
+
+  const match = text.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (match) {
+    const day = String(match[1]).padStart(2, "0");
+    const month = String(match[2]).padStart(2, "0");
+    const year = match[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) {
+    return text.slice(0, 10);
+  }
+
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) {
+    const yyyy = parsed.getFullYear();
+    const mm = String(parsed.getMonth() + 1).padStart(2, "0");
+    const dd = String(parsed.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  }
+
+  return null;
+}
+
+function payloadHasFechaFinContrato(payload = {}) {
+  return Object.prototype.hasOwnProperty.call(payload, "fechaFinContrato")
+    || Object.prototype.hasOwnProperty.call(payload, "fecha_fin_contrato");
+}
+
+function normalizeFacturadorGrupo(cargo, grupo) {
+  const cargoNorm = String(cargo || "").trim().toLowerCase();
+  if (cargoNorm !== "fact" && cargoNorm !== "facturador") {
+    return grupo || null;
+  }
+
+  const value = String(grupo || "").trim();
+  if (!value || value.toUpperCase() === "F" || value.toLowerCase() === "todos") {
+    return "F";
+  }
+
+  const grupos = value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (!grupos.length || grupos.some((item) => {
+    const lower = item.toLowerCase();
+    return lower === "f" || lower === "todos";
+  })) {
+    return "F";
+  }
+
+  return grupos.join(",");
+}
+
+function isFacturadorCargo(cargo) {
+  const value = String(cargo || "").trim().toLowerCase();
+  return value === "fact" || value === "facturador";
+}
+
+function resolveAccesosProfesionales(cargo, accesos) {
+  if (isFacturadorCargo(cargo)) {
+    return [];
+  }
+  return normalizeAccesosProfesionales(accesos);
+}
+
 function mapBulkUserRow(row = {}) {
   const documento = getBulkValue(row, ['Documento', 'documento', 'numDocumento', 'num_documento']);
+  const cargo = getBulkValue(row, ['Cargo', 'cargo']);
+  const grupo = normalizeFacturadorGrupo(cargo, getBulkValue(row, ['Grupo', 'grupo']));
 
   return {
     email: getBulkValue(row, ['Email', 'email']),
     nombre: getBulkValue(row, ['Nombre', 'nombre']),
-    cargo: getBulkValue(row, ['Cargo', 'cargo']),
-    grupo: getBulkValue(row, ['Grupo', 'grupo']),
+    cargo,
+    grupo,
     convenio: getBulkValue(row, ['Convenio', 'convenio']),
     numDocumento: documento,
+    telefono: getBulkValue(row, ['Telefono', 'Teléfono', 'telefono', 'teléfono']),
+    fechaFinContrato: getBulkValue(row, [
+      'FechaFinContrato',
+      'fechaFinContrato',
+      'fecha_fin_contrato',
+      'Fecha fin contrato',
+      'FechaFin',
+    ]),
     password: documento,
     activo: true,
     ipsId: getBulkValue(row, ['idips', 'ipsId', 'ips_id', 'ips']),
@@ -58,24 +160,135 @@ export async function bulkCreateUsers(rows, actor = null) {
   ensure(Array.isArray(rows) && rows.length > 0, 'No se recibieron usuarios para procesar', 400);
 
   let creados = 0;
+  let saltados = 0;
   let errores = 0;
   const detalles = [];
+  const emailsEnLote = new Set();
+  const documentosEnLote = new Set();
 
-  for (const row of rows) {
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
     const userPayload = mapBulkUserRow(row);
-    const rowEmail = userPayload.email || getBulkValue(row, ['Email', 'email']) || 'sin-email';
+    const fila = index + 2; // +2: encabezado + índice 1-based
+    const rowEmail = userPayload.email || getBulkValue(row, ['Email', 'email']) || '';
+    const rowDocumento = userPayload.numDocumento || getBulkValue(row, ['Documento', 'documento']) || '';
+    const rowNombre = userPayload.nombre || getBulkValue(row, ['Nombre', 'nombre']) || '';
+    const emailNorm = rowEmail ? normalizeEmail(rowEmail) : '';
+    const documentoNorm = rowDocumento ? normalizeDocument(rowDocumento) : '';
+
+    const baseDetalle = {
+      fila,
+      nombre: rowNombre,
+      email: rowEmail || 'sin-email',
+      documento: rowDocumento || 'sin-documento',
+      cargo: userPayload.cargo || '',
+      convenio: userPayload.convenio || '',
+    };
 
     try {
-      await createUserRecord(userPayload, actor);
-      creados++;
-      detalles.push({ email: rowEmail, status: 'creado' });
+      if (!emailNorm || !userPayload.nombre || !userPayload.cargo || !documentoNorm) {
+        saltados += 1;
+        detalles.push({
+          ...baseDetalle,
+          status: 'saltado',
+          motivo: 'Datos incompletos: Nombre, Email, Cargo y Documento son obligatorios',
+        });
+        continue;
+      }
+
+      if (emailsEnLote.has(emailNorm)) {
+        saltados += 1;
+        detalles.push({
+          ...baseDetalle,
+          status: 'saltado',
+          motivo: 'Correo electrónico duplicado dentro del mismo archivo CSV',
+        });
+        continue;
+      }
+
+      if (documentosEnLote.has(documentoNorm)) {
+        saltados += 1;
+        detalles.push({
+          ...baseDetalle,
+          status: 'saltado',
+          motivo: 'Número de documento duplicado dentro del mismo archivo CSV',
+        });
+        continue;
+      }
+
+      const existingEmail = await findUserIdByEmail(emailNorm);
+      if (existingEmail) {
+        saltados += 1;
+        detalles.push({
+          ...baseDetalle,
+          status: 'saltado',
+          motivo: 'Correo electrónico ya registrado en el sistema',
+        });
+        continue;
+      }
+
+      const existingDocument = await findUserIdByDocument(documentoNorm);
+      if (existingDocument) {
+        saltados += 1;
+        detalles.push({
+          ...baseDetalle,
+          status: 'saltado',
+          motivo: 'Número de documento ya registrado en el sistema',
+        });
+        continue;
+      }
+
+      await createUserRecord({
+        ...userPayload,
+        email: emailNorm,
+        numDocumento: documentoNorm,
+        password: documentoNorm,
+      }, actor);
+
+      emailsEnLote.add(emailNorm);
+      documentosEnLote.add(documentoNorm);
+      creados += 1;
+      detalles.push({
+        ...baseDetalle,
+        status: 'creado',
+        motivo: 'Usuario creado correctamente',
+      });
     } catch (err) {
-      errores++;
-      detalles.push({ email: rowEmail, status: 'error', error: err.message });
+      const message = String(err?.message || 'Error desconocido');
+      const esDuplicado =
+        /email ya existe/i.test(message) ||
+        /documento ya existe/i.test(message) ||
+        /ya registrado/i.test(message);
+
+      if (esDuplicado) {
+        saltados += 1;
+        detalles.push({
+          ...baseDetalle,
+          status: 'saltado',
+          motivo: message,
+        });
+      } else {
+        errores += 1;
+        detalles.push({
+          ...baseDetalle,
+          status: 'error',
+          motivo: message,
+          error: message,
+        });
+      }
     }
   }
 
-  return { creados, errores, detalles };
+  const noCreados = detalles.filter((item) => item.status === 'saltado' || item.status === 'error');
+
+  return {
+    creados,
+    saltados,
+    errores,
+    total: rows.length,
+    detalles,
+    noCreados,
+  };
 }
 
 export async function bulkCreateUsersFromCsv(filePath, actor = null) {
@@ -160,6 +373,7 @@ const CARGOS_PROFESIONALES_NORMALIZADOS = new Set([
   "trabajadorsocial",
   "trabajadorasocial",
   "nutricionista",
+  "higienistaoral",
   "fact",
   "facturacion",
 ]);
@@ -296,11 +510,15 @@ export async function createUserRecord(payload, actor = null) {
     cargo: payload.cargo,
     ipsId: targetIpsId,
     convenio: payload.convenio || null,
-    grupo: payload.grupo || null,
+    grupo: normalizeFacturadorGrupo(payload.cargo, payload.grupo),
     numDocumento,
+    telefono: normalizeTelefono(payload.telefono ?? payload.telefonoUsuario ?? null),
+    fechaFinContrato: normalizeFechaFinContrato(
+      payload.fechaFinContrato ?? payload.fecha_fin_contrato ?? null
+    ),
     activo: payload.activo === false ? 0 : 1,
     bandejas: normalizeBandejas(payload.bandejas),
-    accesosProfesionales: normalizeAccesosProfesionales(payload.accesosProfesionales),
+    accesosProfesionales: resolveAccesosProfesionales(payload.cargo, payload.accesosProfesionales),
     mustChangePassword: 1,
   });
 
@@ -311,8 +529,12 @@ export async function createUserRecord(payload, actor = null) {
     cargo: payload.cargo,
     ipsId: targetIpsId,
     convenio: payload.convenio || null,
-    grupo: payload.grupo || null,
+    grupo: normalizeFacturadorGrupo(payload.cargo, payload.grupo),
     numDocumento,
+    telefono: normalizeTelefono(payload.telefono ?? payload.telefonoUsuario ?? null),
+    fechaFinContrato: normalizeFechaFinContrato(
+      payload.fechaFinContrato ?? payload.fecha_fin_contrato ?? null
+    ),
     activo: payload.activo !== false,
   };
 }
@@ -329,6 +551,7 @@ export async function updateUserRecord(id, payload, actor = null) {
 
   const payloadIpsId = normalizeIpsId(payload.ipsId ?? payload.ips);
   const canSetIps = actor?.cargo === "superusuario";
+  const targetCargo = payload.cargo ?? targetUser.cargo;
 
   const affected = await updateUser(id, {
     nombre: payload.nombre ?? undefined,
@@ -337,19 +560,36 @@ export async function updateUserRecord(id, payload, actor = null) {
       ? (canSetIps ? (payloadIpsId || actorIpsId) : actorIpsId)
       : undefined,
     convenio: payload.convenio ?? undefined,
-    grupo: payload.grupo ?? undefined,
+    grupo: payload.grupo !== undefined
+      ? normalizeFacturadorGrupo(targetCargo, payload.grupo)
+      : undefined,
+    telefono: payload.telefono !== undefined || payload.telefonoUsuario !== undefined
+      ? normalizeTelefono(payload.telefono ?? payload.telefonoUsuario)
+      : undefined,
+    fecha_fin_contrato: payloadHasFechaFinContrato(payload)
+      ? normalizeFechaFinContrato(payload.fechaFinContrato ?? payload.fecha_fin_contrato ?? null)
+      : undefined,
     activo: typeof payload.activo === "boolean" ? (payload.activo ? 1 : 0) : undefined,
     bandejas: payload.bandejas !== undefined ? normalizeBandejas(payload.bandejas) : undefined,
-    accesos_profesionales: payload.accesosProfesionales !== undefined
-      ? normalizeAccesosProfesionales(payload.accesosProfesionales)
-      : undefined,
+    accesos_profesionales: isFacturadorCargo(targetCargo)
+      ? []
+      : (payload.accesosProfesionales !== undefined
+          ? resolveAccesosProfesionales(targetCargo, payload.accesosProfesionales)
+          : undefined),
   });
 
   if (!affected) {
     throw new AppError("Usuario no encontrado", 404);
   }
 
-  return { message: "Usuario actualizado" };
+  const updated = shouldRestrictByActorIps(actor) && actorIpsId
+    ? await findUserByIdAndIps(id, actorIpsId)
+    : await findUserById(id);
+
+  return {
+    message: "Usuario actualizado",
+    user: toUserResponse(updated),
+  };
 }
 
 export async function deleteUserRecord(id, actor = null) {

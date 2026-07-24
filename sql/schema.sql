@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS users (
   convenio VARCHAR(120) NULL,
   grupo VARCHAR(30) NULL,
   num_documento VARCHAR(40) NULL UNIQUE,
+  telefono VARCHAR(40) NULL,
+  fecha_fin_contrato DATE NULL,
   activo TINYINT(1) NOT NULL DEFAULT 1,
   bandejas JSON NULL,
   accesos_profesionales JSON NULL,
@@ -26,6 +28,7 @@ CREATE TABLE IF NOT EXISTS users (
   INDEX idx_users_ips_id (ips_id)
   ,INDEX idx_users_ips_nombre (ips_id, nombre)
   ,INDEX idx_users_cargo_activo (cargo, activo)
+  ,INDEX idx_users_fecha_fin_contrato (fecha_fin_contrato)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
@@ -156,6 +159,7 @@ CREATE TABLE IF NOT EXISTS encuestas (
   id_psicologo_atiende VARCHAR(36) NULL,
   id_tsocial_atiende VARCHAR(36) NULL,
   id_nutricionista_atiende VARCHAR(36) NULL,
+  id_higienista_oral_atiende VARCHAR(36) NULL,
 
   -- Datos del convenio
   convenio VARCHAR(120) NULL,
@@ -172,6 +176,11 @@ CREATE TABLE IF NOT EXISTS encuestas (
   tipodoc VARCHAR(20) NULL,
   numdoc VARCHAR(40) NULL,
   sexo VARCHAR(20) NULL,
+  departamento_nacimiento VARCHAR(120) NULL,
+  municipio_nacimiento VARCHAR(120) NULL,
+  identidad_genero VARCHAR(120) NULL,
+  ocupacion VARCHAR(255) NULL,
+  nivel_ocupacion VARCHAR(255) NULL,
   fecha_nac DATE NULL,
   direccion VARCHAR(255) NULL,
   telefono VARCHAR(30) NULL,
@@ -191,6 +200,7 @@ CREATE TABLE IF NOT EXISTS encuestas (
   status_gest_psicologo TINYINT(1) NOT NULL DEFAULT 0,
   status_gest_tsocial TINYINT(1) NOT NULL DEFAULT 0,
   status_gest_nutricionista TINYINT(1) NOT NULL DEFAULT 0,
+  status_gest_higienista_oral TINYINT(1) NOT NULL DEFAULT 0,
   status_visita TINYINT(1) NOT NULL DEFAULT 0,
   status_caracterizacion TINYINT(1) NOT NULL DEFAULT 0,
   status_facturacion TINYINT(1) NOT NULL DEFAULT 0,
@@ -201,6 +211,7 @@ CREATE TABLE IF NOT EXISTS encuestas (
   fecha_gest_psicologo DATETIME NULL,
   fecha_gest_tsocial DATETIME NULL,
   fecha_gest_nutricionista DATETIME NULL,
+  fecha_gest_higienista_oral DATETIME NULL,
   fecha_gest_auxiliar DATETIME NULL,
   fecha_facturacion DATETIME NULL,
 
@@ -216,11 +227,13 @@ CREATE TABLE IF NOT EXISTS encuestas (
 
   INDEX idx_encuestas_numdoc (numdoc),
   INDEX idx_encuestas_ips_id (ips_id),
+  INDEX idx_encuestas_fecha (fecha),
   INDEX idx_encuestas_fecha_visita (fecha_visita),
   INDEX idx_encuestas_status_visita (status_visita),
   INDEX idx_encuestas_status_facturacion (status_facturacion),
   INDEX idx_encuestas_id_encuestador (id_encuestador),
   INDEX idx_encuestas_id_nutricionista_atiende (id_nutricionista_atiende),
+  INDEX idx_encuestas_id_higienista_oral_atiende (id_higienista_oral_atiende),
   INDEX idx_encuestas_created_at (created_at),
   INDEX idx_encuestas_aux_bandeja (id_encuestador, status_gest_aux, status_visita),
   INDEX idx_encuestas_medico_bandeja (id_medico_atiende, status_gest_aux, status_gest_medica),
@@ -228,7 +241,10 @@ CREATE TABLE IF NOT EXISTS encuestas (
   INDEX idx_encuestas_psicologo_bandeja (id_psicologo_atiende, status_gest_aux, status_gest_psicologo),
   INDEX idx_encuestas_tsocial_bandeja (id_tsocial_atiende, status_gest_aux, status_gest_tsocial),
   INDEX idx_encuestas_nutricionista_bandeja (id_nutricionista_atiende, status_gest_aux, status_gest_nutricionista),
+  INDEX idx_encuestas_higienista_oral_bandeja (id_higienista_oral_atiende, status_gest_aux, status_gest_higienista_oral),
   INDEX idx_encuestas_convenio_fecha (convenio, fecha),
+  INDEX idx_encuestas_ips_fecha (ips_id, fecha),
+  INDEX idx_encuestas_ips_created_at (ips_id, created_at),
   INDEX idx_encuestas_numdoc_tipodoc (numdoc, tipodoc),
   INDEX idx_encuestas_fact_aprov (convenio, status_facturacion, asig_fact, fecha_gest_enfermera),
   INDEX idx_encuestas_facturador_pendientes (asig_fact, status_facturacion, fecha_facturacion),
@@ -238,7 +254,8 @@ CREATE TABLE IF NOT EXISTS encuestas (
   INDEX idx_encuestas_fact_enfermero (id_enfermero_atiende, status_facturacion, fecha_facturacion),
   INDEX idx_encuestas_fact_psicologo (id_psicologo_atiende, status_facturacion, fecha_facturacion),
   INDEX idx_encuestas_fact_tsocial (id_tsocial_atiende, status_facturacion, fecha_facturacion),
-  INDEX idx_encuestas_fact_nutricionista (id_nutricionista_atiende, status_facturacion, fecha_facturacion)
+  INDEX idx_encuestas_fact_nutricionista (id_nutricionista_atiende, status_facturacion, fecha_facturacion),
+  INDEX idx_encuestas_fact_higienista_oral (id_higienista_oral_atiende, status_facturacion, fecha_facturacion)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ============================================================

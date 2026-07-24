@@ -37,6 +37,10 @@ const ROLE_CONFIG = {
     encuestaColumn: "id_nutricionista_atiende",
     cupKeys: ["nutricionista", "nutricion", "nutrición"],
   },
+  "higienista oral": {
+    encuestaColumn: "id_higienista_oral_atiende",
+    cupKeys: ["higienista oral", "higienista", "oral"],
+  },
 };
 
 export function resolveProfessionalReportRole(cargo) {
@@ -59,6 +63,9 @@ export function resolveProfessionalReportRole(cargo) {
   }
   if (normalizedCargo.includes("nutricionista") || normalizedCargo.includes("nutricion")) {
     return ROLE_CONFIG.nutricionista;
+  }
+  if (normalizedCargo.includes("higienista") && normalizedCargo.includes("oral")) {
+    return ROLE_CONFIG["higienista oral"];
   }
 
   return null;
