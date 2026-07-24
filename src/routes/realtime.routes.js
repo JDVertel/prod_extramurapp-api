@@ -13,7 +13,7 @@ const router = Router();
 
 router.get(["/ips", "/ips.json", "/ips/:id", "/ips/:id.json"], asyncHandler(getRealtimeController));
 
-router.use(requireAuth);
+router.use(asyncHandler(requireAuth));
 
 router.get("/*", asyncHandler(getRealtimeController));
 router.post("/*", asyncHandler(postRealtimeController));

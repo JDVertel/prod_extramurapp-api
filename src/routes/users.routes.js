@@ -20,7 +20,8 @@ const router = Router();
 router.get("/exists/email/:email", asyncHandler(existsByEmailController));
 router.get("/exists/document/:numDocumento", asyncHandler(existsByDocumentController));
 
-router.use(requireAuth);
+// A partir de aquí, todas las rutas de /users requieren JWT
+router.use(asyncHandler(requireAuth));
 
 router.post("/bulk", bulkCreateUsersController);
 router.get("", asyncHandler(listUsersController));

@@ -8,7 +8,7 @@ import { asyncHandler } from "../utils/async-handler.js";
 
 const router = Router();
 
-router.use(requireAuth);
+router.use(asyncHandler(requireAuth));
 
 router.post("/caracterizacion/guardar", asyncHandler(saveCaracterizacionWorkflowController));
 router.post("/encuestas/:encuestaId/devolver-auxiliar", asyncHandler(returnEncuestaToAuxiliarController));

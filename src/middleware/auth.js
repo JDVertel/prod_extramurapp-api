@@ -1,17 +1,21 @@
 import { verifyToken } from "../utils/auth.js";
 import { findUserById } from "../repositories/user.repository.js";
 
+/**
+ * Middleware JWT. Debe usarse SOLO en rutas protegidas.
+ * No aplicar de forma global sobre /auth/login ni otros endpoints públicos.
+ */
 export async function requireAuth(req, res, next) {
-  const authHeader = req.headers.authorization || "";
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.slice(7)
-    : req.query?.auth;
-
-  if (!token) {
-    return res.status(401).json({ message: "Token requerido" });
-  }
-
   try {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.slice(7).trim()
+      : String(req.query?.auth || "").trim();
+
+    if (!token || token === "null" || token === "undefined") {
+      return res.status(401).json({ message: "Token requerido" });
+    }
+
     const payload = verifyToken(token);
     const dbUser = await findUserById(payload.sub);
 
@@ -36,7 +40,11 @@ export async function requireAuth(req, res, next) {
 
     return next();
   } catch (error) {
-    return res.status(401).json({ message: "Token invalido o expirado" });
+    // Errores JWT → 401; otros fallos inesperados → next(error) para el error handler
+    if (error?.name === "JsonWebTokenError" || error?.name === "TokenExpiredError" || error?.name === "NotBeforeError") {
+      return res.status(401).json({ message: "Token invalido o expirado" });
+    }
+    return next(error);
   }
 }
 

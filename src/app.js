@@ -10,23 +10,48 @@ export function createApp() {
   const app = express();
   const isProduction = config.nodeEnv === "production";
 
+  // Necesario detrás de Caddy/Nginx para X-Forwarded-For / X-Forwarded-Proto
+  app.set("trust proxy", true);
   app.disable("x-powered-by");
-  app.use(helmet());
-  app.use(cors({
-    origin(origin, callback) {
-      if (!origin || config.corsOrigins.includes(origin)) {
-        callback(null, true);
-        return;
-      }
 
-      callback(new Error(`CORS no permitido para origen: ${origin}`));
-    },
-  }));
+  app.use(
+    helmet({
+      // En proxy HTTPS (Caddy) evita forzar HSTS agresivo desde la API
+      crossOriginResourcePolicy: { policy: "cross-origin" },
+    })
+  );
+
+  const allowedOrigins = new Set(config.corsOrigins);
+  app.use(
+    cors({
+      origin(origin, callback) {
+        // Requests same-origin / tools sin Origin (curl, healthchecks)
+        if (!origin) {
+          callback(null, true);
+          return;
+        }
+
+        if (allowedOrigins.has(origin)) {
+          callback(null, true);
+          return;
+        }
+
+        // No lanzar Error: eso provoca 500 en el error handler.
+        // Simplemente denegar el origen (el navegador bloqueará CORS).
+        console.warn(`[CORS] Origen no permitido: ${origin}`);
+        callback(null, false);
+      },
+      credentials: true,
+      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Content-Type", "Authorization"],
+    })
+  );
+
   app.use(express.json({ limit: "5mb" }));
   app.use(
     morgan(isProduction ? "tiny" : "dev", {
       skip(req) {
-        return isProduction && req.path === "/api/health";
+        return isProduction && (req.path === "/api/health" || req.path === "/health");
       },
     })
   );

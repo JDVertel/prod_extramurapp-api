@@ -30,7 +30,7 @@ function normalizeOrigins(value) {
 
   return raw
     .split(",")
-    .map((origin) => origin.trim())
+    .map((origin) => origin.trim().replace(/\/$/, ""))
     .filter(Boolean);
 }
 
@@ -58,6 +58,8 @@ export function logStartupConfig() {
   console.log(
     `[${config.nodeEnv}] MySQL ${mysql.user}@${mysql.host}:${mysql.port}/${mysql.database}`
   );
+  console.log(`[${config.nodeEnv}] CORS origins: ${config.corsOrigins.join(" | ") || "(ninguno)"}`);
+  console.log(`[${config.nodeEnv}] trust proxy: habilitado`);
 
   if (isProduction && (config.jwtSecret === "change-me" || /dev/i.test(config.jwtSecret))) {
     console.warn("ADVERTENCIA: JWT_SECRET inseguro en producción. Actualiza el .env del servidor.");

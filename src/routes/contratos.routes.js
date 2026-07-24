@@ -11,7 +11,7 @@ import { asyncHandler } from "../utils/async-handler.js";
 
 const router = Router();
 
-router.use(requireAuth);
+router.use(asyncHandler(requireAuth));
 
 router.get("", asyncHandler(listContratosController));
 router.get("/:id", asyncHandler(getContratoByIdController));

@@ -5,7 +5,7 @@ import { asyncHandler } from "../utils/async-handler.js";
 
 const router = Router();
 
-router.use(requireAuth);
+router.use(asyncHandler(requireAuth));
 
 router.get(
   "/profesionales-facturacion",
