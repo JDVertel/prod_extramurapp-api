@@ -292,10 +292,22 @@ export async function bulkCreateUsers(rows, actor = null) {
 }
 
 export async function bulkCreateUsersFromCsv(filePath, actor = null) {
-  // Leer el archivo CSV
   const csvBuffer = fs.readFileSync(path.resolve(filePath));
-  const csvContent = decodeCsvBuffer(csvBuffer);
-  const { data, errors } = Papa.parse(csvContent, { header: true, skipEmptyLines: true });
+  const csvContent = decodeCsvBuffer(csvBuffer).replace(/^\uFEFF/, "");
+  const firstLine = csvContent.split(/\r?\n/)[0] || "";
+  const delimiter =
+    (firstLine.match(/;/g) || []).length > (firstLine.match(/,/g) || []).length ? ";" : ",";
+
+  const { data, errors } = Papa.parse(csvContent, {
+    header: true,
+    skipEmptyLines: true,
+    delimiter,
+    transformHeader: (header) =>
+      String(header || "")
+        .replace(/^\uFEFF/, "")
+        .trim()
+        .replace(/^"|"$/g, ""),
+  });
   if (errors && errors.length > 0) {
     throw new Error('Error al parsear el archivo CSV: ' + errors.map(e => e.message).join('; '));
   }
