@@ -735,6 +735,7 @@ function toAsignacionCupPayload(row = {}) {
     id: row.cups_id,
     cupsId: row.cups_id,
     cupsNombre: row.cups_nombre,
+    DescripcionCUP: row.cups_nombre,
     codigo: row.cups_codigo,
     Grupo: row.cups_grupo,
     cantidad: row.cantidad,
@@ -773,25 +774,33 @@ async function listContratoCupsByContratoIds(contratoIds = []) {
   return grouped;
 }
 
-async function listAsignacionCupsByEncuestaIds(encuestaIds = []) {
-  if (!encuestaIds.length) {
+export async function listAsignacionCupsByEncuestaIds(encuestaIds = []) {
+  const uniqueIds = Array.from(
+    new Set((encuestaIds || []).map((id) => String(id || "").trim()).filter(Boolean))
+  );
+  if (!uniqueIds.length) {
     return {};
   }
 
-  const placeholders = encuestaIds.map(() => "?").join(", ");
-  const [rows] = await pool.query(
-    `SELECT * FROM asignacion_cups WHERE encuesta_id IN (${placeholders}) ORDER BY id ASC`,
-    encuestaIds
-  );
-
   const grouped = {};
-  rows.forEach((row) => {
-    const key = String(row.encuesta_id);
-    if (!grouped[key]) {
-      grouped[key] = {};
-    }
-    grouped[key][String(row.id)] = toAsignacionCupPayload(row);
-  });
+  const chunkSize = 400;
+
+  for (let i = 0; i < uniqueIds.length; i += chunkSize) {
+    const chunk = uniqueIds.slice(i, i + chunkSize);
+    const placeholders = chunk.map(() => "?").join(", ");
+    const [rows] = await pool.query(
+      `SELECT * FROM asignacion_cups WHERE encuesta_id IN (${placeholders}) ORDER BY id ASC`,
+      chunk
+    );
+
+    rows.forEach((row) => {
+      const key = String(row.encuesta_id);
+      if (!grouped[key]) {
+        grouped[key] = {};
+      }
+      grouped[key][String(row.id)] = toAsignacionCupPayload(row);
+    });
+  }
 
   return grouped;
 }
@@ -1210,6 +1219,43 @@ export async function listModuleRows(config, { limit = 100, offset = 0, ipsId = 
       whereParts.push(`${columnName} = ?`);
       params.push(filterValue);
     });
+
+    const fechaInicio = String(getFirstFilterValue(filters, ["fechaInicio", "fecha_inicio"]) || "").trim();
+    const fechaFin = String(getFirstFilterValue(filters, ["fechaFin", "fecha_fin"]) || "").trim();
+    const fechaCampoRaw = String(
+      getFirstFilterValue(filters, ["fechaCampo", "fecha_campo", "dateField"]) || "fecha"
+    ).trim();
+    const fechaColumnMap = {
+      fecha: "fecha",
+      fechavisita: "fecha_visita",
+      fecha_visita: "fecha_visita",
+      fechagestAuxiliar: "fecha_gest_auxiliar",
+      fecha_gest_auxiliar: "fecha_gest_auxiliar",
+      fechagestMedica: "fecha_gest_medica",
+      fecha_gest_medica: "fecha_gest_medica",
+      fechagestEnfermera: "fecha_gest_enfermera",
+      fecha_gest_enfermera: "fecha_gest_enfermera",
+      fechagestPsicologo: "fecha_gest_psicologo",
+      fecha_gest_psicologo: "fecha_gest_psicologo",
+      fechagestTsocial: "fecha_gest_tsocial",
+      fecha_gest_tsocial: "fecha_gest_tsocial",
+      fechagestNutricionista: "fecha_gest_nutricionista",
+      fecha_gest_nutricionista: "fecha_gest_nutricionista",
+      fechagestHigienistaOral: "fecha_gest_higienista_oral",
+      fecha_gest_higienista_oral: "fecha_gest_higienista_oral",
+      FechaFacturacion: "fecha_facturacion",
+      fechaFacturacion: "fecha_facturacion",
+      fecha_facturacion: "fecha_facturacion",
+    };
+    const fechaColumn = fechaColumnMap[fechaCampoRaw] || null;
+    const dateOnlyRe = /^\d{4}-\d{2}-\d{2}$/;
+
+    if (fechaColumn && dateOnlyRe.test(fechaInicio) && dateOnlyRe.test(fechaFin) && fechaInicio <= fechaFin) {
+      whereParts.push(`${fechaColumn} IS NOT NULL`);
+      whereParts.push(`DATE(${fechaColumn}) >= ?`);
+      whereParts.push(`DATE(${fechaColumn}) <= ?`);
+      params.push(fechaInicio, fechaFin);
+    }
 
     const whereClause = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
     params.push(limit, offset);

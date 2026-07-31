@@ -3,8 +3,10 @@ import {
   listFacturacionProfesionalCerrada,
   resolveProfessionalReportRole,
 } from "../repositories/informes.repository.js";
+import { listAsignacionCupsByEncuestaIds } from "../repositories/module.repository.js";
 
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_BULK_ENCUESTA_IDS = 2000;
 
 function normalizeDocument(value) {
   return String(value ?? "").trim();
@@ -64,4 +66,33 @@ export async function getFacturacionProfesionalCerrada(query = {}, actor = null)
       totalCups: rows.length,
     },
   };
+}
+
+export async function getAsignacionesCupsBulk(payload = {}, actor = null) {
+  ensure(actor, "Usuario autenticado requerido", 401);
+
+  const rawIds = Array.isArray(payload?.encuestaIds)
+    ? payload.encuestaIds
+    : Array.isArray(payload?.ids)
+      ? payload.ids
+      : [];
+
+  const encuestaIds = Array.from(
+    new Set(rawIds.map((id) => String(id || "").trim()).filter(Boolean))
+  ).slice(0, MAX_BULK_ENCUESTA_IDS);
+
+  if (!encuestaIds.length) {
+    return { asignaciones: {} };
+  }
+
+  const groupedCups = await listAsignacionCupsByEncuestaIds(encuestaIds);
+  const asignaciones = {};
+
+  encuestaIds.forEach((encuestaId) => {
+    asignaciones[encuestaId] = {
+      cups: groupedCups[encuestaId] || {},
+    };
+  });
+
+  return { asignaciones };
 }
