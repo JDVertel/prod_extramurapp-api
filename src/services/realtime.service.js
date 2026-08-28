@@ -796,7 +796,18 @@ function toApiEncuesta(payload = {}) {
     fechagestNutricionista: normalizeDateTimeValue(payload.fechagestNutricionista ?? payload.fecha_gest_nutricionista),
     fechagestHigienistaOral: normalizeDateTimeValue(payload.fechagestHigienistaOral ?? payload.fecha_gest_higienista_oral),
     fechagestAuxiliar: normalizeDateTimeValue(payload.fechagestAuxiliar ?? payload.fecha_gest_auxiliar),
-    fechaFacturacion: normalizeDateTimeValue(payload.fechaFacturacion ?? payload.FechaFacturacion ?? payload.fecha_facturacion),
+    fechaFacturacion: (() => {
+      const keys = ["fechaFacturacion", "FechaFacturacion", "fecha_facturacion"];
+      const tieneNullExplicito = keys.some(
+        (key) => Object.prototype.hasOwnProperty.call(payload || {}, key) && payload[key] === null
+      );
+      if (tieneNullExplicito) {
+        return null;
+      }
+      return normalizeDateTimeValue(
+        payload.fechaFacturacion ?? payload.FechaFacturacion ?? payload.fecha_facturacion
+      );
+    })(),
     asig_fact: payload.asig_fact ?? payload.asigfact,
     agendaTomamuestra: payload.agendaTomamuestra ?? payload.Agenda_tomademuestras ?? payload.agenda_tomamuestra,
     agendaVisitaMedica: payload.agendaVisitaMedica ?? payload.Agenda_Visitamedica ?? payload.agenda_visita_medica,
