@@ -246,6 +246,32 @@ function normalizeArray(value) {
   return [];
 }
 
+/** Preserva el id de fila al convertir el mapa legacy cups → array. */
+function normalizeCupsInput(value) {
+  if (Array.isArray(value)) {
+    return value
+      .filter(Boolean)
+      .map((cup) => ({
+        ...(cup && typeof cup === "object" ? cup : {}),
+        id: cup?.id ?? cup?.row_id ?? null,
+      }));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.entries(value)
+      .map(([key, cup]) => {
+        if (!cup || typeof cup !== "object") return null;
+        return {
+          ...cup,
+          id: cup.id ?? cup.row_id ?? key,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
 function normalizeText(value) {
   if (value === null || value === undefined) {
     return null;
@@ -698,7 +724,7 @@ function normalizeAsignacionPayload(payload = {}, id = null) {
     key_ref: normalizeTextLen(normalized.key_ref ?? legacy.key, 100),
     nombre_prof: normalizeTextLen(normalized.nombre_prof ?? legacy.nombreProf ?? legacy.nombrePtof, 190),
     convenio: normalizeTextLen(normalized.convenio ?? legacy.convenio, 120),
-    cups: normalizeArray(legacy.cups ?? normalized.cups),
+    cups: normalizeCupsInput(legacy.cups ?? normalized.cups),
     has_cups: hasOwnCups,
   };
 }
@@ -709,8 +735,10 @@ function normalizeAsignacionCup(cup = {}, fallback = {}) {
     ? null
     : ([true, 1, "1", "true", "TRUE", "si", "sí", "yes"].includes(facturadoRaw) ? 1 : 0);
 
+  const rowId = normalizeTextLen(cup.id ?? cup.row_id ?? fallback.row_id, 36);
+
   return {
-    row_id: randomUUID(),
+    row_id: rowId || randomUUID(),
     ips_id: normalizeIpsId(cup.ipsId ?? cup.ips_id ?? fallback.ips_id),
     encuesta_id: fallback.encuesta_id,
     key_ref: normalizeTextLen(cup.key ?? fallback.key_ref, 100),
@@ -803,6 +831,82 @@ export async function listAsignacionCupsByEncuestaIds(encuestaIds = []) {
   }
 
   return grouped;
+}
+
+/**
+ * Actualiza solo campos de facturación de un CUPS (sin DELETE masivo).
+ */
+export async function patchAsignacionCupFacturacion(encuestaId, cupRowId, patch = {}, { ipsId = null } = {}) {
+  await ensureAsignacionCupsFacturacionColumns();
+
+  const encuesta_id = normalizeTextLen(encuestaId, 36);
+  const cup_id = normalizeTextLen(cupRowId, 36);
+  if (!encuesta_id || !cup_id) {
+    throw new AppError("Datos incompletos para actualizar facturación", 400);
+  }
+
+  const normalized = normalizeAsignacionCup(patch, { encuesta_id });
+  const setParts = [];
+  const values = [];
+
+  const hasFactNum = ["FactNum", "factNum", "numFactura"].some((key) =>
+    Object.prototype.hasOwnProperty.call(patch || {}, key)
+  );
+  if (hasFactNum) {
+    setParts.push("fact_num = ?");
+    values.push(normalized.fact_num);
+  }
+
+  const hasFactProf = ["FactProf", "factProf", "idFacturador"].some((key) =>
+    Object.prototype.hasOwnProperty.call(patch || {}, key)
+  );
+  if (hasFactProf) {
+    setParts.push("fact_prof = ?");
+    values.push(normalized.fact_prof);
+  }
+
+  const hasFacturado = ["facturado", "Facturado"].some((key) =>
+    Object.prototype.hasOwnProperty.call(patch || {}, key)
+  );
+  if (hasFacturado) {
+    setParts.push("facturado = ?");
+    values.push(normalized.facturado);
+  }
+
+  const hasFecha = ["fechaFacturacion", "fecha_facturacion", "fechaAsignacionFactura"].some((key) =>
+    Object.prototype.hasOwnProperty.call(patch || {}, key)
+  );
+  if (hasFecha) {
+    setParts.push("fecha_facturacion = ?");
+    values.push(normalized.fecha_facturacion);
+  }
+
+  if (!setParts.length) {
+    throw new AppError("No hay campos de facturación para actualizar", 400);
+  }
+
+  const whereParts = ["encuesta_id = ?", "id = ?"];
+  values.push(encuesta_id, cup_id);
+  if (ipsId) {
+    whereParts.push("(ips_id = ? OR ips_id IS NULL OR ips_id = '')");
+    values.push(ipsId);
+  }
+
+  const [result] = await pool.query(
+    `UPDATE asignacion_cups SET ${setParts.join(", ")} WHERE ${whereParts.join(" AND ")}`,
+    values
+  );
+
+  if (!result.affectedRows) {
+    throw new AppError("CUPS no encontrado para actualizar facturación", 404);
+  }
+
+  const [rows] = await pool.query(
+    "SELECT * FROM asignacion_cups WHERE encuesta_id = ? AND id = ? LIMIT 1",
+    [encuesta_id, cup_id]
+  );
+
+  return rows.length ? toAsignacionCupPayload(rows[0]) : null;
 }
 
 async function saveContratoCups(contratoId, cups = [], fallback = {}) {

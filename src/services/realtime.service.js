@@ -22,6 +22,7 @@ import {
   postRealtimeValue as postStoredRealtimeValue,
   putRealtimeValue as putStoredRealtimeValue,
 } from "./realtime-store.service.js";
+import { patchAsignacionCupFacturacion } from "../repositories/module.repository.js";
 
 function splitPath(inputPath = "") {
   const clean = normalizePath(inputPath);
@@ -77,6 +78,36 @@ function withActorIpsId(payload = {}, actor = null) {
     ...source,
     ipsId: actorIpsId,
   };
+}
+
+const FACTURACION_PATCH_KEYS = new Set([
+  "FactNum",
+  "factNum",
+  "numFactura",
+  "FactProf",
+  "factProf",
+  "idFacturador",
+  "facturado",
+  "Facturado",
+  "fechaFacturacion",
+  "fecha_facturacion",
+  "fechaAsignacionFactura",
+  "fecha_asignacion_factura",
+  "ipsId",
+  "ips_id",
+  "idips",
+  "ips",
+]);
+
+function isFacturacionOnlyPatch(payload = {}) {
+  if (!isObject(payload)) return false;
+  const keys = Object.keys(payload);
+  if (!keys.length) return false;
+  return keys.every((key) => FACTURACION_PATCH_KEYS.has(key));
+}
+
+function resolveActorIpsId(actor = null) {
+  return normalizeIpsId(actor?.ipsId ?? actor?.ips_id ?? actor?.ips);
 }
 
 function parseBarrioVeredaComuna(value) {
@@ -1213,6 +1244,11 @@ export async function patchRealtimeValue(inputPath, payload, actor = null) {
   }
 
   if (root === "asignaciones" && id) {
+    if (rest.length === 2 && rest[0] === "cups" && isFacturacionOnlyPatch(data)) {
+      const scopedIpsId = actor?.cargo === "superusuario" ? null : resolveActorIpsId(actor);
+      return patchAsignacionCupFacturacion(id, rest[1], data, { ipsId: scopedIpsId });
+    }
+
     const current = await safeGetModuleById("asignaciones", id, actor);
     const currentDatos = toLegacyAsignacionPayload(current || {});
 

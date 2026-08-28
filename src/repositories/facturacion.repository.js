@@ -71,6 +71,11 @@ function appendPendienteFacturacionFilter(whereParts) {
   whereParts.push("(e.status_facturacion = 0 OR e.status_facturacion IS NULL)");
 }
 
+function appendCerradoFacturacionFilter(whereParts) {
+  whereParts.push("e.status_facturacion = 1");
+  whereParts.push("e.fecha_facturacion IS NOT NULL");
+}
+
 function buildFacturadorMatchClause(params, idFacturador) {
   const raw = normalizeText(idFacturador);
   const norm = normalizeDocument(idFacturador);
@@ -159,6 +164,143 @@ export async function listPendientesFacturacion({
      FROM encuestas e
      WHERE ${whereParts.join(" AND ")}
      ORDER BY e.updated_at DESC
+     LIMIT ?`,
+    params
+  );
+
+  return rows;
+}
+
+/**
+ * Historial del facturador: cerrados en rango de fecha_facturacion.
+ */
+export async function listHistorialFacturacion({
+  idFacturador,
+  fechaInicio,
+  fechaFin,
+  convenio = "",
+  gruposFacturador = "",
+  ipsId = null,
+  limit = 2000,
+} = {}) {
+  const facturador = normalizeText(idFacturador);
+  const inicio = normalizeText(fechaInicio);
+  const fin = normalizeText(fechaFin);
+  if (!facturador || !inicio || !fin) {
+    return [];
+  }
+
+  const whereParts = [
+    "DATE(e.fecha_facturacion) >= ?",
+    "DATE(e.fecha_facturacion) <= ?",
+  ];
+  const params = [inicio, fin];
+
+  appendCerradoFacturacionFilter(whereParts);
+  appendIpsFilter(whereParts, params, ipsId);
+  appendConvenioFilter(whereParts, params, convenio);
+  appendGrupoFilter(whereParts, params, gruposFacturador);
+  whereParts.push(buildFacturadorMatchClause(params, facturador));
+
+  const safeLimit = Math.min(Math.max(Number(limit) || 2000, 1), 5000);
+  params.push(safeLimit);
+
+  const [rows] = await pool.query(
+    `SELECT
+       e.*,
+       (
+         SELECT COUNT(*)
+         FROM asignacion_cups ac2
+         WHERE ac2.encuesta_id = e.id
+       ) AS cups_total,
+       (
+         SELECT COUNT(*)
+         FROM asignacion_cups ac3
+         WHERE ac3.encuesta_id = e.id
+           AND NULLIF(TRIM(ac3.fact_num), '') IS NOT NULL
+       ) AS cups_con_factura
+     FROM encuestas e
+     WHERE ${whereParts.join(" AND ")}
+     ORDER BY e.fecha_facturacion DESC, e.updated_at DESC
+     LIMIT ?`,
+    params
+  );
+
+  return rows;
+}
+
+/**
+ * Informe de cuentas del facturador: filas para agregación en rango de cierre.
+ */
+export async function listInformeCerradosFacturacion({
+  idFacturador,
+  fechaInicio,
+  fechaFin,
+  convenio = "",
+  gruposFacturador = "",
+  ipsId = null,
+  limit = 50000,
+} = {}) {
+  const facturador = normalizeText(idFacturador);
+  const inicio = normalizeText(fechaInicio);
+  const fin = normalizeText(fechaFin);
+  if (!facturador || !inicio || !fin) {
+    return [];
+  }
+
+  const whereParts = [
+    "DATE(e.fecha_facturacion) >= ?",
+    "DATE(e.fecha_facturacion) <= ?",
+  ];
+  const params = [inicio, fin];
+
+  appendCerradoFacturacionFilter(whereParts);
+  appendIpsFilter(whereParts, params, ipsId);
+  appendConvenioFilter(whereParts, params, convenio);
+  appendGrupoFilter(whereParts, params, gruposFacturador);
+  whereParts.push(buildFacturadorMatchClause(params, facturador));
+
+  const safeLimit = Math.min(Math.max(Number(limit) || 50000, 1), 50000);
+  params.push(safeLimit);
+
+  const [rows] = await pool.query(
+    `SELECT
+       e.id AS encuestaId,
+       e.convenio,
+       e.grupo,
+       e.eps,
+       e.regimen,
+       e.nombre1,
+       e.nombre2,
+       e.apellido1,
+       e.apellido2,
+       e.tipodoc,
+       e.numdoc,
+       e.fecha_facturacion AS fechaCierrePaciente,
+       e.asig_fact AS asigFact,
+       ac.id AS asignacionCupId,
+       ac.actividad_id AS actividadId,
+       COALESCE(NULLIF(TRIM(ae.nombre), ''), NULLIF(TRIM(ac.actividad_id), ''), 'Sin actividad') AS actividadNombre,
+       ac.cups_id AS cupsId,
+       ac.cups_codigo AS cupsCodigo,
+       ac.cups_nombre AS cupsNombre,
+       ac.cups_grupo AS cupsGrupo,
+       ac.cantidad,
+       ac.detalle,
+       ac.fact_num AS factNum,
+       ac.fact_prof AS factProf,
+       ac.facturado,
+       ac.fecha_facturacion AS fechaFacturacionCup,
+       ac.key_ref AS profesionalRol,
+       ac.nombre_prof AS profesionalNombre
+     FROM encuestas e
+     LEFT JOIN asignacion_cups ac ON ac.encuesta_id = e.id
+     LEFT JOIN actividades_extra ae ON (
+       ae.clave COLLATE utf8mb4_unicode_ci = ac.actividad_id COLLATE utf8mb4_unicode_ci
+       OR ae.id COLLATE utf8mb4_unicode_ci = ac.actividad_id COLLATE utf8mb4_unicode_ci
+     )
+     WHERE ${whereParts.join(" AND ")}
+     ORDER BY e.fecha_facturacion DESC, e.id DESC, ac.cups_codigo ASC, ac.cups_nombre ASC
      LIMIT ?`,
     params
   );

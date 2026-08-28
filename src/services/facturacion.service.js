@@ -2,6 +2,8 @@ import { ensure } from "../utils/app-error.js";
 import {
   listDisponiblesFacturacionPorDocumento,
   listDisponiblesFacturacionPorRango,
+  listHistorialFacturacion,
+  listInformeCerradosFacturacion,
   listPendientesFacturacion,
 } from "../repositories/facturacion.repository.js";
 
@@ -50,6 +52,7 @@ function mapEncuestaFacturacion(row = {}) {
     row.cups_total === undefined
       ? undefined
       : cupsTotal === 0 || cupsConFactura === 0;
+  const facturacionIncompleta = cupsTotal > 0 && cupsConFactura > 0;
 
   return {
     id: row.id,
@@ -96,6 +99,9 @@ function mapEncuestaFacturacion(row = {}) {
     status_caracterizacion: toBooleanStatus(row.status_caracterizacion),
     status_facturacion: toBooleanStatus(row.status_facturacion),
     tipoActividad: { tipoActividad: {} },
+    cupsTotal,
+    cupsConFactura,
+    facturacionIncompleta,
     ...(allFacturasVacias === undefined ? {} : { allFacturasVacias }),
   };
 }
@@ -135,6 +141,181 @@ export async function getDisponiblesFacturacionPorRango(query = {}, actor = null
   });
 
   return rows.map(mapEncuestaFacturacion);
+}
+
+export async function getHistorialFacturacion(query = {}, actor = null) {
+  const idFacturador = String(query.idFacturador ?? query.iduser ?? query.idUsuario ?? "").trim();
+  const fechaInicio = String(query.fechaInicio ?? query.finicial ?? "").trim();
+  const fechaFin = String(query.fechaFin ?? query.ffinal ?? "").trim();
+  ensure(idFacturador, "idFacturador es obligatorio", 400);
+  ensure(fechaInicio && fechaFin, "fechaInicio y fechaFin son obligatorias", 400);
+
+  const rows = await listHistorialFacturacion({
+    idFacturador,
+    fechaInicio,
+    fechaFin,
+    convenio: query.convenio,
+    gruposFacturador: query.gruposFacturador ?? query.grupos,
+    ipsId: resolveActorIpsId(actor),
+    limit: query.limit,
+  });
+
+  return rows.map(mapEncuestaFacturacion);
+}
+
+function esCupFacturado(row = {}) {
+  return toBooleanStatus(row.facturado) && String(row.factNum || "").trim().length > 0;
+}
+
+function etiquetaSinDato(valor, etiqueta = "Sin dato") {
+  const texto = String(valor || "").trim();
+  return texto || etiqueta;
+}
+
+function crearAcumulador(clave, etiqueta = clave) {
+  return {
+    clave,
+    etiqueta,
+    pacientes: new Set(),
+    cupsRegistrados: 0,
+    cupsFacturados: 0,
+    cantidad: 0,
+    facturas: new Set(),
+  };
+}
+
+function finalizarAcumulador(item = {}) {
+  return {
+    clave: item.clave,
+    etiqueta: item.etiqueta,
+    pacientes: item.pacientes?.size || 0,
+    cupsRegistrados: item.cupsRegistrados || 0,
+    cupsFacturados: item.cupsFacturados || 0,
+    cantidad: Number(item.cantidad || 0),
+    facturas: item.facturas?.size || 0,
+  };
+}
+
+function buildInformeResumenCuentas(rows = [], periodo = {}) {
+  const totales = {
+    pacientesCerrados: new Set(),
+    cupsRegistrados: 0,
+    cupsFacturados: 0,
+    cantidadCups: 0,
+    facturasEmitidas: new Set(),
+  };
+
+  const mapas = {
+    convenio: new Map(),
+    eps: new Map(),
+    actividad: new Map(),
+    cups: new Map(),
+    dia: new Map(),
+  };
+
+  const obtenerGrupo = (tipo, clave, etiqueta) => {
+    const key = String(clave || "").trim() || "sin-dato";
+    if (!mapas[tipo].has(key)) {
+      mapas[tipo].set(key, crearAcumulador(key, etiqueta || clave));
+    }
+    return mapas[tipo].get(key);
+  };
+
+  rows.forEach((row) => {
+    const encuestaId = String(row.encuestaId || "").trim();
+    if (!encuestaId) return;
+
+    totales.pacientesCerrados.add(encuestaId);
+
+    const convenio = etiquetaSinDato(row.convenio, "Sin convenio");
+    const eps = etiquetaSinDato(row.eps, "Sin EPS");
+    const actividad = etiquetaSinDato(row.actividadNombre || row.actividadId, "Sin actividad");
+    const fechaDia = String(row.fechaCierrePaciente || "").slice(0, 10) || "Sin fecha";
+
+    [obtenerGrupo("convenio", convenio, convenio),
+      obtenerGrupo("eps", eps, eps),
+      obtenerGrupo("actividad", actividad, actividad),
+      obtenerGrupo("dia", fechaDia, fechaDia)]
+      .forEach((grupo) => grupo.pacientes.add(encuestaId));
+
+    if (!row.asignacionCupId) return;
+
+    const cantidad = Number(row.cantidad || 0);
+    const cupsCodigo = etiquetaSinDato(row.cupsCodigo, "Sin codigo");
+    const cupsNombre = etiquetaSinDato(row.cupsNombre, "Sin nombre CUPS");
+    const cupsEtiqueta = `${cupsCodigo} - ${cupsNombre}`;
+    const grupoCups = obtenerGrupo("cups", `${cupsCodigo}::${cupsNombre}`, cupsEtiqueta);
+    const gruposCup = [
+      obtenerGrupo("convenio", convenio, convenio),
+      obtenerGrupo("eps", eps, eps),
+      obtenerGrupo("actividad", actividad, actividad),
+      grupoCups,
+      obtenerGrupo("dia", fechaDia, fechaDia),
+    ];
+
+    totales.cupsRegistrados += 1;
+    totales.cantidadCups += cantidad;
+
+    gruposCup.forEach((grupo) => {
+      grupo.cupsRegistrados += 1;
+      grupo.cantidad += cantidad;
+    });
+
+    if (esCupFacturado(row)) {
+      totales.cupsFacturados += 1;
+      const factura = String(row.factNum || "").trim();
+      if (factura) totales.facturasEmitidas.add(factura);
+
+      gruposCup.forEach((grupo) => {
+        grupo.cupsFacturados += 1;
+        if (factura) grupo.facturas.add(factura);
+      });
+    }
+  });
+
+  const ordenarDesc = (a, b) =>
+    b.pacientes - a.pacientes
+    || b.cupsFacturados - a.cupsFacturados
+    || b.cantidad - a.cantidad
+    || String(a.etiqueta).localeCompare(String(b.etiqueta), "es");
+
+  const serializar = (map) => Array.from(map.values()).map(finalizarAcumulador).sort(ordenarDesc);
+
+  return {
+    periodo,
+    totales: {
+      pacientesCerrados: totales.pacientesCerrados.size,
+      cupsRegistrados: totales.cupsRegistrados,
+      cupsFacturados: totales.cupsFacturados,
+      cantidadCups: totales.cantidadCups,
+      facturasEmitidas: totales.facturasEmitidas.size,
+    },
+    porConvenio: serializar(mapas.convenio),
+    porEps: serializar(mapas.eps),
+    porActividad: serializar(mapas.actividad),
+    porCups: serializar(mapas.cups),
+    porDia: serializar(mapas.dia).sort((a, b) => String(a.clave).localeCompare(String(b.clave))),
+  };
+}
+
+export async function getInformeCerradosFacturacion(query = {}, actor = null) {
+  const idFacturador = String(query.idFacturador ?? query.iduser ?? query.idUsuario ?? "").trim();
+  const fechaInicio = String(query.fechaInicio ?? query.finicial ?? "").trim();
+  const fechaFin = String(query.fechaFin ?? query.ffinal ?? "").trim();
+  ensure(idFacturador, "idFacturador es obligatorio", 400);
+  ensure(fechaInicio && fechaFin, "fechaInicio y fechaFin son obligatorias", 400);
+
+  const rows = await listInformeCerradosFacturacion({
+    idFacturador,
+    fechaInicio,
+    fechaFin,
+    convenio: query.convenio,
+    gruposFacturador: query.gruposFacturador ?? query.grupos,
+    ipsId: resolveActorIpsId(actor),
+    limit: query.limit,
+  });
+
+  return buildInformeResumenCuentas(rows, { fechaInicio, fechaFin });
 }
 
 export async function getDisponiblesFacturacionPorDocumento(query = {}, actor = null) {
