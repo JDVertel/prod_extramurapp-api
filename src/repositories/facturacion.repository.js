@@ -76,6 +76,32 @@ function appendCerradoFacturacionFilter(whereParts) {
   whereParts.push("e.fecha_facturacion IS NOT NULL");
 }
 
+function buildCupFacturadorMatchClause(params, idFacturador, alias = "ac") {
+  const raw = normalizeText(idFacturador);
+  const norm = normalizeDocument(idFacturador);
+  const candidates = Array.from(new Set([raw, norm].filter(Boolean)));
+
+  if (!candidates.length) {
+    return "1 = 0";
+  }
+
+  const cupsParts = [];
+
+  candidates.forEach((candidate) => {
+    cupsParts.push(`TRIM(IFNULL(${alias}.fact_prof, '')) = ?`);
+    params.push(candidate);
+  });
+
+  if (norm) {
+    cupsParts.push(
+      `REPLACE(REPLACE(REPLACE(LOWER(TRIM(IFNULL(${alias}.fact_prof, ''))), '.', ''), '-', ''), ' ', '') = ?`
+    );
+    params.push(norm);
+  }
+
+  return `(${cupsParts.join(" OR ")})`;
+}
+
 function buildFacturadorMatchClause(params, idFacturador) {
   const raw = normalizeText(idFacturador);
   const norm = normalizeDocument(idFacturador);
@@ -87,13 +113,9 @@ function buildFacturadorMatchClause(params, idFacturador) {
 
   // Match exacto + variantes normalizadas sin REGEXP_REPLACE (compat MySQL/MariaDB).
   const encuestaParts = [];
-  const cupsParts = [];
 
   candidates.forEach((candidate) => {
     encuestaParts.push("TRIM(IFNULL(e.asig_fact, '')) = ?");
-    params.push(candidate);
-
-    cupsParts.push("TRIM(IFNULL(ac.fact_prof, '')) = ?");
     params.push(candidate);
   });
 
@@ -102,12 +124,9 @@ function buildFacturadorMatchClause(params, idFacturador) {
       "REPLACE(REPLACE(REPLACE(LOWER(TRIM(IFNULL(e.asig_fact, ''))), '.', ''), '-', ''), ' ', '') = ?"
     );
     params.push(norm);
-
-    cupsParts.push(
-      "REPLACE(REPLACE(REPLACE(LOWER(TRIM(IFNULL(ac.fact_prof, ''))), '.', ''), '-', ''), ' ', '') = ?"
-    );
-    params.push(norm);
   }
+
+  const cupMatch = buildCupFacturadorMatchClause(params, idFacturador, "ac");
 
   return `(
     ${encuestaParts.join(" OR ")}
@@ -115,7 +134,7 @@ function buildFacturadorMatchClause(params, idFacturador) {
       SELECT 1
       FROM asignacion_cups ac
       WHERE ac.encuesta_id = e.id
-        AND (${cupsParts.join(" OR ")})
+        AND ${cupMatch}
     )
   )`;
 }
@@ -260,6 +279,9 @@ export async function listInformeCerradosFacturacion({
   appendGrupoFilter(whereParts, params, gruposFacturador);
   whereParts.push(buildFacturadorMatchClause(params, facturador));
 
+  const joinParams = [];
+  const cupMatchJoin = buildCupFacturadorMatchClause(joinParams, facturador, "ac");
+
   const safeLimit = Math.min(Math.max(Number(limit) || 50000, 1), 50000);
   params.push(safeLimit);
 
@@ -294,7 +316,7 @@ export async function listInformeCerradosFacturacion({
        ac.key_ref AS profesionalRol,
        ac.nombre_prof AS profesionalNombre
      FROM encuestas e
-     LEFT JOIN asignacion_cups ac ON ac.encuesta_id = e.id
+     LEFT JOIN asignacion_cups ac ON ac.encuesta_id = e.id AND ${cupMatchJoin}
      LEFT JOIN actividades_extra ae ON (
        ae.clave COLLATE utf8mb4_unicode_ci = ac.actividad_id COLLATE utf8mb4_unicode_ci
        OR ae.id COLLATE utf8mb4_unicode_ci = ac.actividad_id COLLATE utf8mb4_unicode_ci
@@ -302,7 +324,7 @@ export async function listInformeCerradosFacturacion({
      WHERE ${whereParts.join(" AND ")}
      ORDER BY e.fecha_facturacion DESC, e.id DESC, ac.cups_codigo ASC, ac.cups_nombre ASC
      LIMIT ?`,
-    params
+    [...joinParams, ...params]
   );
 
   return rows;

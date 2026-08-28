@@ -52,7 +52,7 @@ function mapEncuestaFacturacion(row = {}) {
     row.cups_total === undefined
       ? undefined
       : cupsTotal === 0 || cupsConFactura === 0;
-  const facturacionIncompleta = cupsTotal > 0 && cupsConFactura > 0;
+  const facturacionIncompleta = cupsTotal > 0 && cupsConFactura > 0 && cupsConFactura < cupsTotal;
 
   return {
     id: row.id,

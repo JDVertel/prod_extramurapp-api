@@ -261,9 +261,15 @@ function normalizeCupsInput(value) {
     return Object.entries(value)
       .map(([key, cup]) => {
         if (!cup || typeof cup !== "object") return null;
+        const rowId = cup.row_id ?? cup.rowId ?? cup._rowKey ?? key;
+        const cupsCatalogId = cup.cupsId ?? cup.cups_id ?? (
+          cup.id && String(cup.id) !== String(rowId) ? cup.id : null
+        );
         return {
           ...cup,
-          id: cup.id ?? cup.row_id ?? key,
+          row_id: rowId,
+          id: rowId,
+          cupsId: cupsCatalogId,
         };
       })
       .filter(Boolean);
@@ -735,7 +741,14 @@ function normalizeAsignacionCup(cup = {}, fallback = {}) {
     ? null
     : ([true, 1, "1", "true", "TRUE", "si", "sí", "yes"].includes(facturadoRaw) ? 1 : 0);
 
-  const rowId = normalizeTextLen(cup.id ?? cup.row_id ?? fallback.row_id, 36);
+  const rowId = normalizeTextLen(
+    cup.row_id ?? cup.rowId ?? cup._rowKey ?? fallback.row_id ?? cup.id,
+    36
+  );
+  const cupsCatalogId = normalizeTextLen(
+    cup.cupsId ?? cup.cups_id ?? (cup.id && cup.id !== rowId ? cup.id : null),
+    36
+  );
 
   return {
     row_id: rowId || randomUUID(),
@@ -745,7 +758,7 @@ function normalizeAsignacionCup(cup = {}, fallback = {}) {
     nombre_prof: normalizeTextLen(cup.nombreProf ?? cup.nombrePtof ?? fallback.nombre_prof, 190),
     convenio: normalizeTextLen(cup.convenio ?? fallback.convenio, 120),
     actividad_id: normalizeTextLen(cup.actividadId, 60),
-    cups_id: normalizeTextLen(cup.cupsId ?? cup.id, 36),
+    cups_id: cupsCatalogId,
     cups_nombre: normalizeTextLen(cup.cupsNombre ?? cup.DescripcionCUP, 255),
     cups_codigo: normalizeTextLen(cup.codigo, 40),
     cups_grupo: normalizeTextLen(cup.Grupo ?? cup.grupo, 120),
@@ -760,7 +773,8 @@ function normalizeAsignacionCup(cup = {}, fallback = {}) {
 
 function toAsignacionCupPayload(row = {}) {
   return {
-    id: row.cups_id,
+    id: row.id,
+    rowId: row.id,
     cupsId: row.cups_id,
     cupsNombre: row.cups_nombre,
     DescripcionCUP: row.cups_nombre,
