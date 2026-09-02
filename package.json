@@ -15,7 +15,9 @@
     "migrate:encuestas:datos-paciente-lengths": "node src/scripts/migrate-encuestas-datos-paciente-lengths.js",
     "migrate:users:login-lock": "node src/scripts/migrate-users-login-lock-columns.js",
     "migrate:users:telefono-contrato": "node src/scripts/migrate-users-telefono-contrato.js",
-    "migrate:performance-indexes": "node src/scripts/ensure-performance-indexes.js"
+    "migrate:performance-indexes": "node src/scripts/ensure-performance-indexes.js",
+    "migrate:eps-bd": "node src/scripts/migrate-eps-bd.js",
+    "migrate:facturacion-bd": "node src/scripts/migrate-facturacion-bd.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

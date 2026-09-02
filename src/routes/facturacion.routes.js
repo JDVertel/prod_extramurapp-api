@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  cerrarDepuracionMasivaController,
   getDisponiblesFacturacionPorDocumentoController,
   getDisponiblesFacturacionPorRangoController,
   getHistorialFacturacionController,
@@ -14,6 +15,7 @@ const router = Router();
 router.use(asyncHandler(requireAuth));
 
 router.get("/pendientes", asyncHandler(getPendientesFacturacionController));
+router.post("/cerrar-depuracion", asyncHandler(cerrarDepuracionMasivaController));
 router.get("/historial", asyncHandler(getHistorialFacturacionController));
 router.get("/informe-cerrados", asyncHandler(getInformeCerradosFacturacionController));
 router.get("/disponibles", asyncHandler(getDisponiblesFacturacionPorRangoController));

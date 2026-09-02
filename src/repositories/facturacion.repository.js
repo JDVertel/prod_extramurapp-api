@@ -422,3 +422,84 @@ export async function listDisponiblesFacturacionPorDocumento({
 
   return rows;
 }
+
+export async function cerrarDepuracionEncuestas({
+  encuestaIds = [],
+  idFacturador,
+  ipsId = null,
+} = {}) {
+  const ids = [...new Set(encuestaIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  if (!ids.length) {
+    return { procesados: 0, cerrados: 0, cerradosIds: [], errores: [] };
+  }
+
+  const facturador = normalizeText(idFacturador);
+  if (!facturador) {
+    throw new Error("idFacturador es obligatorio");
+  }
+
+  const connection = await pool.getConnection();
+  const fechaCierre = new Date();
+
+  try {
+    await connection.beginTransaction();
+
+    const whereParts = [`e.id IN (${ids.map(() => "?").join(", ")})`];
+    const params = [...ids];
+    appendPendienteFacturacionFilter(whereParts);
+    appendIpsFilter(whereParts, params, ipsId);
+    whereParts.push(buildFacturadorMatchClause(params, facturador));
+
+    const [elegibles] = await connection.query(
+      `SELECT e.id
+         FROM encuestas e
+        WHERE ${whereParts.join(" AND ")}`,
+      params
+    );
+
+    const elegiblesIds = elegibles.map((row) => String(row.id));
+    const elegiblesSet = new Set(elegiblesIds);
+
+    for (const encuestaId of elegiblesIds) {
+      await connection.query(
+        `UPDATE asignacion_cups
+            SET fact_num = '0000',
+                facturado = 1,
+                fact_prof = ?,
+                fecha_facturacion = ?
+          WHERE encuesta_id = ?`,
+        [facturador, fechaCierre, encuestaId]
+      );
+
+      await connection.query(
+        `UPDATE encuestas
+            SET status_facturacion = 1,
+                fecha_facturacion = ?,
+                updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?`,
+        [fechaCierre, encuestaId]
+      );
+    }
+
+    await connection.commit();
+
+    const errores = ids
+      .filter((id) => !elegiblesSet.has(id))
+      .map((id) => ({
+        id,
+        message: "No elegible: no está pendiente o no pertenece al facturador.",
+      }));
+
+    return {
+      procesados: ids.length,
+      cerrados: elegiblesIds.length,
+      cerradosIds: elegiblesIds,
+      errores,
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}

@@ -1,4 +1,5 @@
 import {
+  cerrarDepuracionMasiva,
   getDisponiblesFacturacionPorDocumento,
   getDisponiblesFacturacionPorRango,
   getHistorialFacturacion,
@@ -24,4 +25,8 @@ export async function getDisponiblesFacturacionPorDocumentoController(req, res) 
 
 export async function getInformeCerradosFacturacionController(req, res) {
   res.json(await getInformeCerradosFacturacion(req.query || {}, req.user));
+}
+
+export async function cerrarDepuracionMasivaController(req, res) {
+  res.json(await cerrarDepuracionMasiva(req.body || {}, req.user));
 }

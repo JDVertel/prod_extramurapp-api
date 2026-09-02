@@ -1,6 +1,7 @@
 import { Router } from "express";
 import authRoutes from "./auth.routes.js";
 import contratosRoutes from "./contratos.routes.js";
+import epsBdRoutes from "./eps-bd.routes.js";
 import facturacionRoutes from "./facturacion.routes.js";
 import healthRoutes from "./health.routes.js";
 import informesRoutes from "./informes.routes.js";
@@ -16,6 +17,7 @@ router.use("/", healthRoutes);
 router.use("/auth", authRoutes);
 router.use("/users", usersRoutes);
 router.use("/contratos", contratosRoutes);
+router.use("/eps-bd", epsBdRoutes);
 router.use("/facturacion", facturacionRoutes);
 router.use("/informes", informesRoutes);
 router.use("/mantenimiento", mantenimientoRoutes);

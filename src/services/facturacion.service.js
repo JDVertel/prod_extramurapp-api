@@ -1,5 +1,6 @@
 import { ensure } from "../utils/app-error.js";
 import {
+  cerrarDepuracionEncuestas,
   listDisponiblesFacturacionPorDocumento,
   listDisponiblesFacturacionPorRango,
   listHistorialFacturacion,
@@ -333,4 +334,21 @@ export async function getDisponiblesFacturacionPorDocumento(query = {}, actor = 
   });
 
   return rows.map(mapEncuestaFacturacion);
+}
+
+export async function cerrarDepuracionMasiva(payload = {}, actor = null) {
+  const encuestaIds = Array.isArray(payload.encuestaIds) ? payload.encuestaIds : [];
+  const idFacturador = String(
+    payload.idFacturador ?? payload.iduser ?? actor?.numDocumento ?? ""
+  ).trim();
+
+  ensure(encuestaIds.length > 0, "Debe indicar al menos un paciente", 400);
+  ensure(idFacturador, "idFacturador es obligatorio", 400);
+  ensure(encuestaIds.length <= 200, "Maximo 200 pacientes por operacion", 400);
+
+  return cerrarDepuracionEncuestas({
+    encuestaIds,
+    idFacturador,
+    ipsId: resolveActorIpsId(actor),
+  });
 }
