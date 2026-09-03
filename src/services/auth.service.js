@@ -4,6 +4,10 @@ import { AppError, ensure } from "../utils/app-error.js";
 import { hashPassword, signToken, verifyPassword } from "../utils/auth.js";
 import { normalizeEmail, toAuthLoginResponse } from "../models/user.model.js";
 import {
+  MENSAJE_USUARIO_GRUPO_RESERVADO,
+  usuarioPerteneceAGrupoReservado,
+} from "../utils/grupoUtils.js";
+import {
   createPasswordResetToken,
   ensureLoginSecurityColumns,
   createUser,
@@ -89,6 +93,15 @@ function assertContratoVigente(user) {
   }
 }
 
+function assertUsuarioNoGrupoReservado(user) {
+  if (usuarioPerteneceAGrupoReservado(user)) {
+    throw new AppError(MENSAJE_USUARIO_GRUPO_RESERVADO, 403, {
+      grupoReservado: true,
+      disabled: true,
+    });
+  }
+}
+
 function normalizeIpsId(value) {
   const normalized = String(value ?? "").trim();
   return normalized || null;
@@ -138,6 +151,7 @@ export async function login(payload) {
   const user = await findUserForLogin(email);
   ensure(user, "Credenciales invalidas", 401);
   ensure(user.activo, "Usuario inactivo", 403);
+  assertUsuarioNoGrupoReservado(user);
   assertContratoVigente(user);
 
   const now = new Date();

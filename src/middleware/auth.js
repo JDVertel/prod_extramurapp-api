@@ -1,5 +1,9 @@
 import { verifyToken } from "../utils/auth.js";
 import { findUserById } from "../repositories/user.repository.js";
+import {
+  MENSAJE_USUARIO_GRUPO_RESERVADO,
+  usuarioPerteneceAGrupoReservado,
+} from "../utils/grupoUtils.js";
 
 const AUTH_USER_CACHE_TTL_MS = 45_000;
 const authUserCache = new Map();
@@ -59,6 +63,14 @@ export async function requireAuth(req, res, next) {
     if (!dbUser.activo) {
       invalidateAuthUserCache(dbUser.id);
       return res.status(403).json({ message: "Usuario inactivo" });
+    }
+
+    if (usuarioPerteneceAGrupoReservado(dbUser)) {
+      invalidateAuthUserCache(dbUser.id);
+      return res.status(403).json({
+        message: MENSAJE_USUARIO_GRUPO_RESERVADO,
+        detail: { grupoReservado: true, disabled: true },
+      });
     }
 
     req.user = {

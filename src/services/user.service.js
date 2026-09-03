@@ -318,6 +318,7 @@ import { randomUUID } from "node:crypto";
 import { ensure, AppError } from "../utils/app-error.js";
 import { hashPassword } from "../utils/auth.js";
 import { normalizeDocument, normalizeEmail, toUserResponse } from "../models/user.model.js";
+import { usuarioPerteneceAGrupoReservado } from "../utils/grupoUtils.js";
 import {
   clearUserLockState,
   createUser,
@@ -431,7 +432,9 @@ export async function getDelegatedProfessionals(actor = null) {
   const profesionales = rows
     .map(toUserResponse)
     .filter((user) => {
-      return isProfessionalCargo(user?.cargo) && user?.activo !== false;
+      return isProfessionalCargo(user?.cargo)
+        && user?.activo !== false
+        && !usuarioPerteneceAGrupoReservado(user);
     });
 
   const cargoActor = String(actor?.cargo || "").trim().toLowerCase();
