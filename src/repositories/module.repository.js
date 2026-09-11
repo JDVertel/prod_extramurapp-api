@@ -63,6 +63,7 @@ async function ensureAsignacionCupsFacturacionColumns() {
       { name: "fact_prof", ddl: "VARCHAR(36) NULL" },
       { name: "facturado", ddl: "TINYINT(1) NULL" },
       { name: "fecha_facturacion", ddl: "DATETIME NULL" },
+      { name: "id_prof", ddl: "VARCHAR(36) NULL" },
     ];
 
     for (const col of required) {
@@ -729,6 +730,10 @@ function normalizeAsignacionPayload(payload = {}, id = null) {
     ips_id: normalizeIpsId(normalized.ips_id),
     key_ref: normalizeTextLen(normalized.key_ref ?? legacy.key, 100),
     nombre_prof: normalizeTextLen(normalized.nombre_prof ?? legacy.nombreProf ?? legacy.nombrePtof, 190),
+    id_prof: normalizeTextLen(
+      normalized.id_prof ?? legacy.idProf ?? legacy.idProfesional ?? legacy.documentoProf ?? legacy.numDocumento,
+      36
+    ),
     convenio: normalizeTextLen(normalized.convenio ?? legacy.convenio, 120),
     cups: normalizeCupsInput(legacy.cups ?? normalized.cups),
     has_cups: hasOwnCups,
@@ -756,6 +761,10 @@ function normalizeAsignacionCup(cup = {}, fallback = {}) {
     encuesta_id: fallback.encuesta_id,
     key_ref: normalizeTextLen(cup.key ?? fallback.key_ref, 100),
     nombre_prof: normalizeTextLen(cup.nombreProf ?? cup.nombrePtof ?? fallback.nombre_prof, 190),
+    id_prof: normalizeTextLen(
+      cup.idProf ?? cup.idProfesional ?? cup.documentoProf ?? cup.numDocumento ?? fallback.id_prof,
+      36
+    ),
     convenio: normalizeTextLen(cup.convenio ?? fallback.convenio, 120),
     actividad_id: normalizeTextLen(cup.actividadId, 60),
     cups_id: cupsCatalogId,
@@ -785,6 +794,8 @@ function toAsignacionCupPayload(row = {}) {
     actividadId: row.actividad_id,
     key: row.key_ref,
     nombreProf: row.nombre_prof,
+    idProf: row.id_prof ?? null,
+    idProfesional: row.id_prof ?? null,
     convenio: row.convenio,
     FactNum: row.fact_num ?? null,
     FactProf: row.fact_prof ?? null,
@@ -817,6 +828,8 @@ async function listContratoCupsByContratoIds(contratoIds = []) {
 }
 
 export async function listAsignacionCupsByEncuestaIds(encuestaIds = []) {
+  await ensureAsignacionCupsFacturacionColumns();
+
   const uniqueIds = Array.from(
     new Set((encuestaIds || []).map((id) => String(id || "").trim()).filter(Boolean))
   );
@@ -1002,6 +1015,7 @@ async function saveAsignacionCups(encuestaId, cups = [], fallback = {}) {
     row.encuesta_id,
     row.key_ref,
     row.nombre_prof,
+    row.id_prof,
     row.convenio,
     row.actividad_id,
     row.cups_id,
@@ -1018,12 +1032,13 @@ async function saveAsignacionCups(encuestaId, cups = [], fallback = {}) {
 
   await pool.query(
     `INSERT INTO asignacion_cups
-      (id, ips_id, encuesta_id, key_ref, nombre_prof, convenio, actividad_id, cups_id, cups_nombre, cups_codigo, cups_grupo, cantidad, detalle, fact_num, fact_prof, facturado, fecha_facturacion)
+      (id, ips_id, encuesta_id, key_ref, nombre_prof, id_prof, convenio, actividad_id, cups_id, cups_nombre, cups_codigo, cups_grupo, cantidad, detalle, fact_num, fact_prof, facturado, fecha_facturacion)
      VALUES ?
      ON DUPLICATE KEY UPDATE
        ips_id = VALUES(ips_id),
        key_ref = VALUES(key_ref),
        nombre_prof = VALUES(nombre_prof),
+       id_prof = VALUES(id_prof),
        convenio = VALUES(convenio),
        cups_nombre = VALUES(cups_nombre),
        cups_codigo = VALUES(cups_codigo),

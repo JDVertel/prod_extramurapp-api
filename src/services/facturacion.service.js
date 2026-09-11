@@ -197,6 +197,38 @@ function finalizarAcumulador(item = {}) {
   };
 }
 
+function mapFilaDetalleInforme(row = {}) {
+  const paciente = [row.nombre1, row.nombre2, row.apellido1, row.apellido2]
+    .map((parte) => String(parte || "").trim())
+    .filter(Boolean)
+    .join(" ") || "Sin nombre";
+  const tipodoc = String(row.tipodoc || "").trim();
+  const numdoc = String(row.numdoc || "").trim();
+  const profesional = etiquetaSinDato(row.profesionalNombre, "Sin profesional");
+  const rol = etiquetaSinDato(row.profesionalRol, "Sin rol");
+
+  return {
+    convenio: etiquetaSinDato(row.convenio, "Sin convenio"),
+    grupo: etiquetaSinDato(row.grupo, "Sin grupo"),
+    profesional,
+    rol,
+    paciente,
+    documento: [tipodoc, numdoc].filter(Boolean).join("-") || "Sin documento",
+    eps: etiquetaSinDato(row.eps, "Sin EPS"),
+    regimen: etiquetaSinDato(row.regimen, "Sin regimen"),
+    fechaCierre: String(row.fechaCierrePaciente || "").slice(0, 10) || "",
+    actividad: etiquetaSinDato(row.actividadNombre || row.actividadId, "Sin actividad"),
+    codigoCups: etiquetaSinDato(row.cupsCodigo, ""),
+    cupsNombre: etiquetaSinDato(row.cupsNombre, ""),
+    cupsGrupo: etiquetaSinDato(row.cupsGrupo, ""),
+    cantidad: Number.isFinite(Number(row.cantidad)) ? Number(row.cantidad) : null,
+    numeroFactura: String(row.factNum || "").trim(),
+    facturado: esCupFacturado(row) ? "Sí" : "No",
+    fechaFacturacionCup: String(row.fechaFacturacionCup || "").slice(0, 10) || "",
+    encuestaId: String(row.encuestaId || "").trim(),
+  };
+}
+
 function buildInformeResumenCuentas(rows = [], periodo = {}) {
   const totales = {
     pacientesCerrados: new Set(),
@@ -208,11 +240,16 @@ function buildInformeResumenCuentas(rows = [], periodo = {}) {
 
   const mapas = {
     convenio: new Map(),
+    grupo: new Map(),
+    convenioGrupo: new Map(),
+    profesional: new Map(),
     eps: new Map(),
     actividad: new Map(),
     cups: new Map(),
     dia: new Map(),
   };
+
+  const detalle = [];
 
   const obtenerGrupo = (tipo, clave, etiqueta) => {
     const key = String(clave || "").trim() || "sin-dato";
@@ -229,11 +266,20 @@ function buildInformeResumenCuentas(rows = [], periodo = {}) {
     totales.pacientesCerrados.add(encuestaId);
 
     const convenio = etiquetaSinDato(row.convenio, "Sin convenio");
+    const grupoPaciente = etiquetaSinDato(row.grupo, "Sin grupo");
+    const convenioGrupoEtiqueta = `${convenio} / Grupo ${grupoPaciente}`;
+    const convenioGrupoClave = `${convenio}::${grupoPaciente}`;
+    const profesional = etiquetaSinDato(row.profesionalNombre, "Sin profesional");
+    const rol = etiquetaSinDato(row.profesionalRol, "Sin rol");
+    const profesionalClave = `${profesional}::${rol}`;
+    const profesionalEtiqueta = rol && rol !== "Sin rol" ? `${profesional} (${rol})` : profesional;
     const eps = etiquetaSinDato(row.eps, "Sin EPS");
     const actividad = etiquetaSinDato(row.actividadNombre || row.actividadId, "Sin actividad");
     const fechaDia = String(row.fechaCierrePaciente || "").slice(0, 10) || "Sin fecha";
 
     [obtenerGrupo("convenio", convenio, convenio),
+      obtenerGrupo("grupo", grupoPaciente, grupoPaciente),
+      obtenerGrupo("convenioGrupo", convenioGrupoClave, convenioGrupoEtiqueta),
       obtenerGrupo("eps", eps, eps),
       obtenerGrupo("actividad", actividad, actividad),
       obtenerGrupo("dia", fechaDia, fechaDia)]
@@ -241,13 +287,21 @@ function buildInformeResumenCuentas(rows = [], periodo = {}) {
 
     if (!row.asignacionCupId) return;
 
+    detalle.push(mapFilaDetalleInforme(row));
+
     const cantidad = Number(row.cantidad || 0);
     const cupsCodigo = etiquetaSinDato(row.cupsCodigo, "Sin codigo");
     const cupsNombre = etiquetaSinDato(row.cupsNombre, "Sin nombre CUPS");
     const cupsEtiqueta = `${cupsCodigo} - ${cupsNombre}`;
     const grupoCups = obtenerGrupo("cups", `${cupsCodigo}::${cupsNombre}`, cupsEtiqueta);
+    const grupoProfesional = obtenerGrupo("profesional", profesionalClave, profesionalEtiqueta);
+    grupoProfesional.pacientes.add(encuestaId);
+
     const gruposCup = [
       obtenerGrupo("convenio", convenio, convenio),
+      obtenerGrupo("grupo", grupoPaciente, grupoPaciente),
+      obtenerGrupo("convenioGrupo", convenioGrupoClave, convenioGrupoEtiqueta),
+      grupoProfesional,
       obtenerGrupo("eps", eps, eps),
       obtenerGrupo("actividad", actividad, actividad),
       grupoCups,
@@ -282,6 +336,13 @@ function buildInformeResumenCuentas(rows = [], periodo = {}) {
 
   const serializar = (map) => Array.from(map.values()).map(finalizarAcumulador).sort(ordenarDesc);
 
+  detalle.sort((a, b) =>
+    String(a.convenio).localeCompare(String(b.convenio), "es")
+    || String(a.grupo).localeCompare(String(b.grupo), "es")
+    || String(a.profesional).localeCompare(String(b.profesional), "es")
+    || String(a.paciente).localeCompare(String(b.paciente), "es")
+  );
+
   return {
     periodo,
     totales: {
@@ -291,7 +352,11 @@ function buildInformeResumenCuentas(rows = [], periodo = {}) {
       cantidadCups: totales.cantidadCups,
       facturasEmitidas: totales.facturasEmitidas.size,
     },
+    detalle,
     porConvenio: serializar(mapas.convenio),
+    porGrupo: serializar(mapas.grupo),
+    porConvenioGrupo: serializar(mapas.convenioGrupo),
+    porProfesional: serializar(mapas.profesional),
     porEps: serializar(mapas.eps),
     porActividad: serializar(mapas.actividad),
     porCups: serializar(mapas.cups),
