@@ -71,6 +71,75 @@ export function resolveProfessionalReportRole(cargo) {
   return null;
 }
 
+/**
+ * Base para indicadores de salud: una fila por CUPS asignado (o una sola fila sin CUPS)
+ * de cada encuesta con `fecha` dentro del rango.
+ */
+export async function listIndicadoresSaludBase({
+  fechaInicio,
+  fechaFin,
+  convenio = "",
+  ipsId = null,
+} = {}) {
+  const whereParts = [
+    "e.fecha IS NOT NULL",
+    "DATE(e.fecha) >= ?",
+    "DATE(e.fecha) <= ?",
+  ];
+  const params = [fechaInicio, fechaFin];
+
+  const convenioLimpio = String(convenio || "").trim();
+  if (convenioLimpio) {
+    whereParts.push("LOWER(TRIM(COALESCE(e.convenio, ''))) = LOWER(TRIM(?))");
+    params.push(convenioLimpio);
+  }
+
+  if (ipsId) {
+    whereParts.push("(e.ips_id = ? OR e.ips_id IS NULL OR e.ips_id = '')");
+    params.push(ipsId);
+  }
+
+  const [rows] = await pool.query(
+    `SELECT
+       e.id AS encuestaId,
+       e.convenio,
+       e.eps,
+       e.grupo,
+       e.nombre1,
+       e.nombre2,
+       e.apellido1,
+       e.apellido2,
+       e.tipodoc,
+       e.numdoc,
+       e.sexo,
+       e.fecha_nac AS fechaNac,
+       e.poblacion_riesgo AS poblacionRiesgo,
+       e.fecha,
+       e.fecha_visita AS fechaVisita,
+       c.antecedentes,
+       c.evacunal,
+       ac.id AS asignacionCupId,
+       ac.cups_codigo AS cupsCodigo,
+       ac.cups_nombre AS cupsNombre,
+       ac.cups_grupo AS cupsGrupo,
+       ac.detalle,
+       ac.key_ref AS rol,
+       ae.nombre AS actividadNombre
+     FROM encuestas e
+     LEFT JOIN caracterizacion c ON c.encuesta_id = e.id
+     LEFT JOIN asignacion_cups ac ON ac.encuesta_id = e.id
+     LEFT JOIN actividades_extra ae ON (
+       ae.clave COLLATE utf8mb4_unicode_ci = ac.actividad_id COLLATE utf8mb4_unicode_ci
+       OR ae.id COLLATE utf8mb4_unicode_ci = ac.actividad_id COLLATE utf8mb4_unicode_ci
+     )
+     WHERE ${whereParts.join(" AND ")}
+     ORDER BY e.fecha ASC, e.id ASC`,
+    params
+  );
+
+  return rows;
+}
+
 export async function listFacturacionProfesionalCerrada({
   fechaInicio,
   fechaFin,

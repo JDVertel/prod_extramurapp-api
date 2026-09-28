@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   getAsignacionesCupsBulkController,
   getFacturacionProfesionalCerradaController,
+  getIndicadoresSaludController,
 } from "../controllers/informes.controller.js";
 import { requireAuth } from "../middleware/auth.js";
 import { asyncHandler } from "../utils/async-handler.js";
@@ -18,6 +19,11 @@ router.get(
 router.post(
   "/asignaciones-cups",
   asyncHandler(getAsignacionesCupsBulkController)
+);
+
+router.get(
+  "/indicadores",
+  asyncHandler(getIndicadoresSaludController)
 );
 
 export default router;
