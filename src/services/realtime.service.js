@@ -974,7 +974,7 @@ export async function getRealtimeValue(inputPath, actor = null, query = {}) {
 
   if (root === "caracterizacion") {
     if (!id) {
-      const rows = await listModule("caracterizacion", { limit: 5000, offset: 0 }, actor);
+      const rows = await listModule("caracterizacion", { ...query, limit: query?.limit ?? 5000, offset: query?.offset ?? 0 }, actor);
       return buildCaracterizacionMap(rows);
     }
 

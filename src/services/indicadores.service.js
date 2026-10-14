@@ -448,11 +448,7 @@ function etiquetaEdad(edadMeses) {
 export async function getIndicadoresSalud(query = {}, actor = null) {
   ensure(actor, "Usuario autenticado requerido", 401);
   const cargo = String(actor?.cargo || "").trim().toLowerCase();
-  ensure(
-    ["admin", "administrador", "superusuario"].includes(cargo),
-    "Solo administradores pueden consultar indicadores",
-    403
-  );
+  ensure(cargo === "superusuario", "Solo el superusuario puede consultar indicadores", 403);
 
   const fechaInicio = String(query.fechaInicio || "").trim();
   const fechaFin = String(query.fechaFin || "").trim();
@@ -460,11 +456,13 @@ export async function getIndicadoresSalud(query = {}, actor = null) {
   ensure(DATE_ONLY_RE.test(fechaFin), "Debe enviar fechaFin en formato YYYY-MM-DD", 400);
   ensure(fechaInicio <= fechaFin, "La fecha de inicio no puede ser mayor que la fecha fin", 400);
 
+  const ipsId = String(query.ipsId || "").trim() || null;
+
   const rows = await listIndicadoresSaludBase({
     fechaInicio,
     fechaFin,
     convenio: query.convenio,
-    ipsId: cargo === "superusuario" ? null : actor?.ipsId,
+    ipsId,
   });
 
   const personas = construirPersonas(rows);
@@ -517,7 +515,7 @@ export async function getIndicadoresSalud(query = {}, actor = null) {
   });
 
   return {
-    periodo: { fechaInicio, fechaFin, convenio: String(query.convenio || "").trim() },
+    periodo: { fechaInicio, fechaFin, convenio: String(query.convenio || "").trim(), ipsId },
     totalPacientes: personas.length,
     totalEncuestas: new Set(rows.map((row) => String(row.encuestaId))).size,
     totalCaracterizados: personas.filter((persona) => persona.esquemaVacunal).length,

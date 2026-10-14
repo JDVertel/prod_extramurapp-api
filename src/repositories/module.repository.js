@@ -1391,9 +1391,12 @@ export async function listModuleRows(config, { limit = 100, offset = 0, ipsId = 
     }
 
     const whereClause = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
+    // Paginar por updated_at salta o repite filas si se editan durante la lectura; por id es estable.
+    const ordenEstable = String(getFirstFilterValue(filters, ["orden"]) || "").trim().toLowerCase() === "id";
+    const orderBy = ordenEstable ? "id ASC" : "updated_at DESC, id DESC";
     params.push(limit, offset);
     const [rows] = await pool.query(
-      `SELECT * FROM ${config.table} ${whereClause} ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
+      `SELECT * FROM ${config.table} ${whereClause} ORDER BY ${orderBy} LIMIT ? OFFSET ?`,
       params
     );
     return rows.map((row) => toModuleRow(row, config));

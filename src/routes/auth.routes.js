@@ -2,7 +2,6 @@ import { Router } from "express";
 import {
   changePasswordController,
   loginController,
-  registerAdminController,
   requestPasswordResetController,
   resetPasswordController,
 } from "../controllers/auth.controller.js";
@@ -14,7 +13,6 @@ const router = Router();
 // ------------------------------------------------------------
 // Rutas PÚBLICAS (sin JWT)
 // ------------------------------------------------------------
-router.post("/register-admin", asyncHandler(registerAdminController));
 router.post("/login", asyncHandler(loginController));
 router.post("/request-password-reset", asyncHandler(requestPasswordResetController));
 router.post("/reset-password", asyncHandler(resetPasswordController));

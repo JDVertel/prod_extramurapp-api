@@ -10,7 +10,6 @@ import {
 import {
   createPasswordResetToken,
   ensureLoginSecurityColumns,
-  createUser,
   findUserCredentialsById,
   findUserForLogin,
   findUserIdByEmail,
@@ -100,46 +99,6 @@ function assertUsuarioNoGrupoReservado(user) {
       disabled: true,
     });
   }
-}
-
-function normalizeIpsId(value) {
-  const normalized = String(value ?? "").trim();
-  return normalized || null;
-}
-
-export async function registerAdmin(payload) {
-  const email = normalizeEmail(payload.email);
-  ensure(email && payload.password && payload.nombre, "email, password y nombre son obligatorios", 400);
-
-  const existing = await findUserIdByEmail(email);
-  ensure(!existing, "El email ya existe", 409);
-
-  const id = randomUUID();
-  const passwordHash = await hashPassword(payload.password);
-
-  await createUser({
-    id,
-    email,
-    passwordHash,
-    nombre: payload.nombre,
-    cargo: payload.cargo || "admin",
-    ipsId: normalizeIpsId(payload.ipsId ?? payload.ips),
-    convenio: payload.convenio || "sin-convenio",
-    grupo: payload.grupo || null,
-    numDocumento: payload.numDocumento || null,
-    activo: 1,
-    mustChangePassword: 0,
-  });
-
-  return {
-    id,
-    email,
-    nombre: payload.nombre,
-    cargo: payload.cargo || "admin",
-    convenio: payload.convenio || "sin-convenio",
-    grupo: payload.grupo || "",
-    numDocumento: payload.numDocumento || "",
-  };
 }
 
 export async function login(payload) {

@@ -1,15 +1,9 @@
 import {
   changePassword,
   login,
-  registerAdmin,
   requestPasswordReset,
   resetPassword,
 } from "../services/auth.service.js";
-
-export async function registerAdminController(req, res) {
-  const data = await registerAdmin(req.body || {});
-  res.status(201).json(data);
-}
 
 export async function loginController(req, res) {
   res.json(await login(req.body || {}));
